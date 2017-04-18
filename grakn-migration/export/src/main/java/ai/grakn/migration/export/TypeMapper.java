@@ -21,9 +21,9 @@ import ai.grakn.concept.RelationType;
 import ai.grakn.concept.ResourceType;
 import ai.grakn.concept.RoleType;
 import ai.grakn.concept.Type;
+import ai.grakn.graql.Graql;
 import ai.grakn.graql.Var;
 
-import static ai.grakn.graql.Graql.name;
 import static ai.grakn.graql.Graql.var;
 
 /**
@@ -49,13 +49,13 @@ public class TypeMapper {
     }
 
     /**
-     * Map a RelationType to a Var with all of the has-role edges
+     * Map a RelationType to a Var with all of the relates edges
      * @param var holder var with basic information
      * @param relationType type to be mapped
      * @return var with RelationType specific metadata
      */
     private static Var map(Var var, RelationType relationType) {
-        return hasRoles(var, relationType);
+        return relates(var, relationType);
     }
 
     /**
@@ -74,14 +74,14 @@ public class TypeMapper {
      * @return Var containing basic information about the given type
      */
     private static Var formatBase(Type type) {
-        Var var = var().name(type.getName());
+        Var var = var().label(type.getLabel());
 
         Type superType = type.superType();
         if (type.superType() != null) {
-            var = var.sub(name(superType.getName()));
+            var = var.sub(Graql.label(superType.getLabel()));
         }
 
-        var = playsRoles(var, type);
+        var = plays(var, type);
         var = isAbstract(var, type);
 
         return var;
@@ -97,27 +97,27 @@ public class TypeMapper {
     }
 
     /**
-     * Add plays-role edges to a var, given a type
+     * Add plays edges to a var, given a type
      * @param var var to be modified
      * @param type type from which metadata extracted
-     * @return var with appropriate plays-role edges
+     * @return var with appropriate plays edges
      */
-    private static Var playsRoles(Var var, Type type) {
-        for(RoleType role:type.playsRoles()){
-            var = var.playsRole(name(role.getName()));
+    private static Var plays(Var var, Type type) {
+        for(RoleType role:type.plays()){
+            var = var.plays(Graql.label(role.getLabel()));
         }
         return var;
     }
 
     /**
-     * Add has-role edges to a var, given a type
+     * Add relates edges to a var, given a type
      * @param var var to be modified
      * @param type type from which metadata extracted
-     * @return var with appropriate has-role edges
+     * @return var with appropriate relates edges
      */
-    private static Var hasRoles(Var var, RelationType type){
-        for(RoleType role:type.hasRoles()){
-            var = var.hasRole(name(role.getName()));
+    private static Var relates(Var var, RelationType type){
+        for(RoleType role:type.relates()){
+            var = var.relates(Graql.label(role.getLabel()));
         }
         return var;
     }

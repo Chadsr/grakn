@@ -18,6 +18,7 @@
 
 package ai.grakn.graph.internal;
 
+import ai.grakn.GraknTxType;
 import ai.grakn.exception.GraknBackendException;
 import ai.grakn.exception.GraknLockingException;
 import com.thinkaurelius.titan.core.TitanException;
@@ -28,6 +29,8 @@ import com.thinkaurelius.titan.diskstorage.locking.PermanentLockingException;
 import com.thinkaurelius.titan.diskstorage.locking.TemporaryLockingException;
 import com.thinkaurelius.titan.graphdb.database.StandardTitanGraph;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
+
+import java.util.Properties;
 
 /**
  * <p>
@@ -44,8 +47,11 @@ import org.apache.tinkerpop.gremlin.structure.Vertex;
  * @author fppt
  */
 public class GraknTitanGraph extends AbstractGraknGraph<TitanGraph> {
-    public GraknTitanGraph(TitanGraph graph, String name, String engineUrl, boolean batchLoading){
-        super(graph, name, engineUrl, batchLoading);
+    private final StandardTitanGraph rootGraph;
+
+    public GraknTitanGraph(TitanGraph graph, String name, String engineUrl, boolean batchLoading, Properties properties){
+        super(graph, name, engineUrl, batchLoading, properties);
+        this.rootGraph = (StandardTitanGraph) graph;
     }
 
     /**
@@ -61,21 +67,31 @@ public class GraknTitanGraph extends AbstractGraknGraph<TitanGraph> {
     }
 
     @Override
+    public void openTransaction(GraknTxType txType){
+        super.openTransaction(txType);
+        if(getTinkerPopGraph().isOpen() && !getTinkerPopGraph().tx().isOpen()) getTinkerPopGraph().tx().open();
+    }
+
+    @Override
+    public boolean isConnectionClosed() {
+        return rootGraph.isClosed();
+    }
+
+    @Override
     public int numOpenTx() {
-        return ((StandardTitanGraph)getTinkerPopGraph()).getOpenTxs();
+        return rootGraph.getOpenTxs();
     }
 
     @Override
     protected void clearGraph() {
-        TitanGraph titanGraph = getTinkerPopGraph();
-        titanGraph.close();
-        TitanCleanup.clear(titanGraph);
+        rootGraph.close();
+        TitanCleanup.clear(rootGraph);
     }
 
     @Override
-    public void commitTransaction(){
+    public void commitTransactionInternal(){
         try {
-            super.commitTransaction();
+            super.commitTransactionInternal();
         } catch (TitanException e){
             if(e.isCausedBy(TemporaryLockingException.class) || e.isCausedBy(PermanentLockingException.class)){
                 throw new GraknLockingException(e);
@@ -86,7 +102,11 @@ public class GraknTitanGraph extends AbstractGraknGraph<TitanGraph> {
     }
 
     @Override
-    public boolean validVertex(Vertex vertex) {
-        return !((TitanVertex) vertex).isRemoved() && super.validVertex(vertex);
+    public void validVertex(Vertex vertex) {
+        super.validVertex(vertex);
+
+        if(((TitanVertex) vertex).isRemoved()){
+            throw new IllegalStateException("The vertex [" + vertex + "] has been removed and is no longer valid");
+        }
     }
 }

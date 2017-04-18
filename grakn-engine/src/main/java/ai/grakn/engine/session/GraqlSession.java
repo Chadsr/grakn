@@ -19,10 +19,11 @@
 package ai.grakn.engine.session;
 
 import ai.grakn.GraknGraph;
-import ai.grakn.GraknGraphFactory;
+import ai.grakn.GraknSession;
+import ai.grakn.GraknTxType;
 import ai.grakn.concept.ResourceType;
 import ai.grakn.concept.Type;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 import ai.grakn.exception.ConceptException;
 import ai.grakn.exception.GraknValidationException;
 import ai.grakn.graql.ComputeQuery;
@@ -72,7 +73,7 @@ class GraqlSession {
     private final boolean infer;
     private final boolean materialise;
     private GraknGraph graph;
-    private final GraknGraphFactory factory;
+    private final GraknSession factory;
     private final String outputFormat;
     private Printer printer;
     private StringBuilder queryStringBuilder = new StringBuilder();
@@ -87,7 +88,7 @@ class GraqlSession {
     private List<Query<?>> queries = null;
 
     GraqlSession(
-            Session session, GraknGraphFactory factory, String outputFormat,
+            Session session, GraknSession factory, String outputFormat,
             boolean showImplicitTypes, boolean infer, boolean materialise
     ) {
         this.showImplicitTypes = showImplicitTypes;
@@ -116,7 +117,8 @@ class GraqlSession {
     }
 
     private void refreshGraph() {
-        graph = factory.getGraph();
+        if (graph != null && !graph.isClosed()) graph.close();
+        graph = factory.open(GraknTxType.WRITE);
         graph.showImplicitConcepts(showImplicitTypes);
     }
 
@@ -224,13 +226,9 @@ class GraqlSession {
                 errorMessage = "An unexpected error occurred";
                 LOG.error(errorMessage,e);
             } finally {
-                // Refresh the graph, in case it has been closed by analytics
-                // TODO: Handle this elsewhere (analytics or graph factory?)
-                attemptRefresh();
-
                 if (errorMessage != null) {
                     if (queries != null && !queries.stream().allMatch(Query::isReadOnly)) {
-                        graph.close();
+                        attemptRefresh();
                     }
                     sendQueryError(errorMessage);
                 }
@@ -246,8 +244,7 @@ class GraqlSession {
     void commit() {
         queryExecutor.execute(() -> {
             try {
-                graph.commitOnClose();
-                graph.close();
+                graph.commit();
             } catch (GraknValidationException e) {
                 sendCommitError(e.getMessage());
             } finally {
@@ -349,7 +346,7 @@ class GraqlSession {
     private void sendTypes() {
         sendJson(Json.object(
                 ACTION, ACTION_TYPES,
-                TYPES, getTypes(graph).map(TypeName::getValue).collect(toList())
+                TYPES, getTypes(graph).map(TypeLabel::getValue).collect(toList())
         ));
     }
 
@@ -371,8 +368,8 @@ class GraqlSession {
      * @param graph the graph to find types in
      * @return all type IDs in the ontology
      */
-    private static Stream<TypeName> getTypes(GraknGraph graph) {
-        return graph.admin().getMetaConcept().subTypes().stream().map(Type::getName);
+    private static Stream<TypeLabel> getTypes(GraknGraph graph) {
+        return graph.admin().getMetaConcept().subTypes().stream().map(Type::getLabel);
     }
 
     private Printer getPrinter(ResourceType... resources) {

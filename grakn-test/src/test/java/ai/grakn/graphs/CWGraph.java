@@ -37,14 +37,11 @@ public class CWGraph extends TestGraph {
     private static EntityType person, criminal, weapon, rocket, missile, country;
     
     private static ResourceType<String> alignment;
-    private static RoleType alignmentValue, alignmentTarget;
 
     private static ResourceType<String> propulsion;
-    private static RoleType propulsionValue, propulsionTarget;
 
     private static ResourceType<String> nationality;
-    private static RoleType nationalityValue, nationalityTarget;
-    
+
     private static RelationType isEnemyOf, isPaidBy, owns, transaction;
     
     private static RoleType enemySource, enemyTarget;
@@ -62,86 +59,74 @@ public class CWGraph extends TestGraph {
     protected void buildOntology(GraknGraph graph) {
         key = graph.putResourceType("name", ResourceType.DataType.STRING);
 
-        nationalityTarget = graph.putRoleType("has-nationality-owner");
-        nationalityValue = graph.putRoleType("has-nationality-value");
-        nationality = graph.putResourceType("nationality", ResourceType.DataType.STRING)
-                .playsRole(nationalityValue);
-
-        propulsionTarget = graph.putRoleType("has-propulsion-owner");
-        propulsionValue = graph.putRoleType("has-propulsion-value");
-        propulsion = graph.putResourceType("propulsion", ResourceType.DataType.STRING)
-                .playsRole(propulsionValue);
-
-        alignmentTarget = graph.putRoleType("has-alignment-owner");
-        alignmentValue = graph.putRoleType("has-alignment-value");
-        alignment = graph.putResourceType("alignment", ResourceType.DataType.STRING)
-                .playsRole(alignmentValue);
+        nationality = graph.putResourceType("nationality", ResourceType.DataType.STRING);
+        propulsion = graph.putResourceType("propulsion", ResourceType.DataType.STRING);
+        alignment = graph.putResourceType("alignment", ResourceType.DataType.STRING);
 
         enemySource = graph.putRoleType("enemy-source");
         enemyTarget = graph.putRoleType("enemy-target");
         isEnemyOf = graph.putRelationType("is-enemy-of")
-                .hasRole(enemySource).hasRole(enemyTarget);
+                .relates(enemySource).relates(enemyTarget);
 
         //owns
         owner = graph.putRoleType("item-owner");
         ownedItem = graph.putRoleType("owned-item");
         owns = graph.putRelationType("owns")
-                .hasRole(owner).hasRole(ownedItem);
+                .relates(owner).relates(ownedItem);
 
         //transaction
         seller = graph.putRoleType("seller");
         buyer = graph.putRoleType("buyer");
         transactionItem = graph.putRoleType("transaction-item");
         transaction = graph.putRelationType("transaction")
-                .hasRole(seller).hasRole(buyer).hasRole(transactionItem);
+                .relates(seller).relates(buyer).relates(transactionItem);
 
         //isPaidBy
         payee = graph.putRoleType("payee");
         payer = graph.putRoleType("payer");
         isPaidBy = graph.putRelationType("is-paid-by")
-                .hasRole(payee).hasRole(payer);
+                .relates(payee).relates(payer);
 
         person = graph.putEntityType("person")
-                .playsRole(seller)
-                .playsRole(payee);
-        person.hasResource(key);
-        person.hasResource(nationality);
+                .plays(seller)
+                .plays(payee);
+        person.resource(key);
+        person.resource(nationality);
 
-        criminal = graph.putEntityType("criminal")
-                .superType(person);
+        criminal = graph.putEntityType("criminal");
 
         weapon = graph.putEntityType("weapon")
-                .playsRole(transactionItem)
-                .playsRole(ownedItem);
-        weapon.hasResource(key);
+                .plays(transactionItem)
+                .plays(ownedItem);
+        weapon.resource(key);
 
         rocket = graph.putEntityType("rocket")
-                .playsRole(transactionItem)
-                .playsRole(ownedItem);
-        rocket.hasResource(key);
-        rocket.hasResource(propulsion);
+                .plays(transactionItem)
+                .plays(ownedItem);
+        rocket.resource(key);
+        rocket.resource(propulsion);
 
         missile = graph.putEntityType("missile")
                 .superType(weapon)
-                .playsRole(transactionItem);
-        missile.hasResource(key);
+                .plays(transactionItem);
+        missile.resource(key);
 
         country = graph.putEntityType("country")
-                .playsRole(buyer)
-                .playsRole(owner)
-                .playsRole(enemyTarget)
-                .playsRole(payer)
-                .playsRole(enemySource);
-        country.hasResource(key);
-        country.hasResource(alignment);
+                .plays(buyer)
+                .plays(owner)
+                .plays(enemyTarget)
+                .plays(payer)
+                .plays(enemySource);
+        country.resource(key);
+        country.resource(alignment);
     }
 
     @Override
     protected void buildInstances(GraknGraph graph) {
-        colonelWest =  putEntity(graph, "colonelWest", person, key.getName());
-        Nono =  putEntity(graph, "Nono", country, key.getName());
-        America =  putEntity(graph, "America", country, key.getName());
-        Tomahawk =  putEntity(graph, "Tomahawk", rocket, key.getName());
+        colonelWest =  putEntity(graph, "colonelWest", person, key.getLabel());
+        Nono =  putEntity(graph, "Nono", country, key.getLabel());
+        America =  putEntity(graph, "America", country, key.getLabel());
+        Tomahawk =  putEntity(graph, "Tomahawk", rocket, key.getLabel());
 
         putResource(colonelWest, nationality, "American");
         putResource(Tomahawk, propulsion, "gsp");
@@ -151,18 +136,18 @@ public class CWGraph extends TestGraph {
     protected void buildRelations(GraknGraph graph) {
         //Enemy(Nono, America)
         isEnemyOf.addRelation()
-                .putRolePlayer(enemySource, Nono)
-                .putRolePlayer(enemyTarget, America);
+                .addRolePlayer(enemySource, Nono)
+                .addRolePlayer(enemyTarget, America);
 
         //Owns(Nono, Missile)
         owns.addRelation()
-                .putRolePlayer(owner, Nono)
-                .putRolePlayer(ownedItem, Tomahawk);
+                .addRolePlayer(owner, Nono)
+                .addRolePlayer(ownedItem, Tomahawk);
 
         //isPaidBy(West, Nono)
         isPaidBy.addRelation()
-                .putRolePlayer(payee, colonelWest)
-                .putRolePlayer(payer, Nono);
+                .addRolePlayer(payee, colonelWest)
+                .addRolePlayer(payer, Nono);
     }
 
     @Override
@@ -177,12 +162,12 @@ public class CWGraph extends TestGraph {
                 "(seller: $x, transaction-item: $y, buyer: $z) isa transaction;"));
 
         Pattern R1_RHS = Graql.and(graph.graql().parsePatterns("$x isa criminal;"));
-        inferenceRule.addRule(R1_LHS, R1_RHS);
+        inferenceRule.putRule(R1_LHS, R1_RHS);
 
         //R2: "Missiles are a kind of a weapon"
         Pattern R2_LHS = Graql.and(graph.graql().parsePatterns("$x isa missile;"));
         Pattern R2_RHS = Graql.and(graph.graql().parsePatterns("$x isa weapon;"));
-        inferenceRule.addRule(R2_LHS, R2_RHS);
+        inferenceRule.putRule(R2_LHS, R2_RHS);
 
         //R3: "If a country is an enemy of America then it is hostile"
         Pattern R3_LHS = Graql.and(
@@ -190,12 +175,12 @@ public class CWGraph extends TestGraph {
                 "($x, $y) isa is-enemy-of;" +
                 "$y isa country;$y has name 'America';"));
         Pattern R3_RHS = Graql.and(graph.graql().parsePatterns("$x has alignment 'hostile';"));
-        inferenceRule.addRule(R3_LHS, R3_RHS);
+        inferenceRule.putRule(R3_LHS, R3_RHS);
 
         //R4: "If a rocket is self-propelled and guided, it is a missile"
         Pattern R4_LHS = Graql.and(graph.graql().parsePatterns("$x isa rocket;$x has propulsion 'gsp';"));
         Pattern R4_RHS = Graql.and(graph.graql().parsePatterns("$x isa missile;"));
-        inferenceRule.addRule(R4_LHS, R4_RHS);
+        inferenceRule.putRule(R4_LHS, R4_RHS);
 
         Pattern R5_LHS = Graql.and(
                 graph.graql().parsePatterns("$x isa person;" +
@@ -205,6 +190,6 @@ public class CWGraph extends TestGraph {
                 "($y, $z) isa owns;"));
 
         Pattern R5_RHS = Graql.and(graph.graql().parsePatterns("(seller: $x, buyer: $y, transaction-item: $z) isa transaction;"));
-        inferenceRule.addRule(R5_LHS, R5_RHS);
+        inferenceRule.putRule(R5_LHS, R5_RHS);
     }
 }

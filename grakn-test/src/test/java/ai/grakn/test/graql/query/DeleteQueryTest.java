@@ -34,7 +34,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
-import static ai.grakn.graql.Graql.name;
+import static ai.grakn.graql.Graql.label;
 import static ai.grakn.graql.Graql.var;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.core.StringContains.containsString;
@@ -78,7 +78,7 @@ public class DeleteQueryTest {
 
     @Test
     public void testDeleteMultiple() {
-        qb.insert(name("fake-type").sub(Schema.MetaSchema.ENTITY.getName().getValue())).execute();
+        qb.insert(label("fake-type").sub(Schema.MetaSchema.ENTITY.getLabel().getValue())).execute();
         qb.insert(var("x").isa("fake-type"), var("y").isa("fake-type")).execute();
 
         assertEquals(2, qb.match(var("x").isa("fake-type")).stream().count());
@@ -110,21 +110,21 @@ public class DeleteQueryTest {
         qb.match(var("x").has("gender", "male")).delete("x").execute();
         assertFalse(qb.match(var().has("gender", "male")).ask().execute());
 
-        assertTrue(qb.match(var().isa("real-name").value("Bob")).ask().execute());
-        assertTrue(qb.match(var().isa("real-name").value("Robert")).ask().execute());
-        assertTrue(qb.match(var().isa("gender").value("male")).ask().execute());
+        assertTrue(qb.match(var().isa("real-name").val("Bob")).ask().execute());
+        assertTrue(qb.match(var().isa("real-name").val("Robert")).ask().execute());
+        assertTrue(qb.match(var().isa("gender").val("male")).ask().execute());
     }
 
     @Test
     public void testDeleteSpecificEdge() {
-        Var actor = name("has-cast").hasRole("actor");
-        Var productionWithCast = name("has-cast").hasRole("production-with-cast");
+        Var actor = label("has-cast").relates("actor");
+        Var productionWithCast = label("has-cast").relates("production-with-cast");
 
         assertTrue(qb.match(actor).ask().execute());
         assertTrue(qb.match(productionWithCast).ask().execute());
 
-        qb.match(var("x").name("has-cast")).delete(var("x").hasRole("actor")).execute();
-        assertTrue(qb.match(name("has-cast")).ask().execute());
+        qb.match(var("x").label("has-cast")).delete(var("x").relates("actor")).execute();
+        assertTrue(qb.match(label("has-cast")).ask().execute());
         assertFalse(qb.match(actor).ask().execute());
         assertTrue(qb.match(productionWithCast).ask().execute());
 
@@ -154,9 +154,9 @@ public class DeleteQueryTest {
         qb.match(var("x").has("real-name", "Bob")).delete("x").execute();
         assertFalse(qb.match(var().has("real-name", "Bob").isa("person")).ask().execute());
 
-        assertTrue(qb.match(var().isa("real-name").value("Bob")).ask().execute());
-        assertTrue(qb.match(var().isa("real-name").value("Robert")).ask().execute());
-        assertTrue(qb.match(var().isa("gender").value("male")).ask().execute());
+        assertTrue(qb.match(var().isa("real-name").val("Bob")).ask().execute());
+        assertTrue(qb.match(var().isa("real-name").val("Robert")).ask().execute());
+        assertTrue(qb.match(var().isa("gender").val("male")).ask().execute());
     }
 
     @Test
@@ -232,27 +232,27 @@ public class DeleteQueryTest {
         MatchQuery godfather = qb.match(var().has("title", "Godfather"));
         ConceptId id = qb.match(
                 var("x").has("title", "Godfather"),
-                var("a").rel("x").rel("y").isa("has-tmdb-vote-count")
+                var("a").rel("x").rel("y").isa(Schema.ImplicitType.HAS.getLabel("tmdb-vote-count").getValue())
         ).get("a").findFirst().get().getId();
         MatchQuery relation = qb.match(var().id(id));
-        MatchQuery voteCount = qb.match(var().value(1000L).isa("tmdb-vote-count"));
+        MatchQuery voteCount = qb.match(var().val(1000L).isa("tmdb-vote-count"));
 
         assertTrue(exists(godfather));
         assertTrue(exists(relation));
         assertTrue(exists(voteCount));
 
-        qb.match(var("x").value(1000L).isa("tmdb-vote-count")).delete("x").execute();
+        qb.match(var("x").val(1000L).isa("tmdb-vote-count")).delete("x").execute();
 
         assertTrue(exists(godfather));
-        assertTrue(exists(relation));
+        assertFalse(exists(relation)); //Relation is implicit it was deleted
         assertFalse(exists(voteCount));
     }
 
     @Test
     public void testDeleteEntityTypeWithNoInstances() {
-        MatchQuery shoeType = qb.match(var("x").name("shoe").sub("entity"));
+        MatchQuery shoeType = qb.match(var("x").label("shoe").sub("entity"));
 
-        qb.insert(name("shoe").sub("entity")).execute();
+        qb.insert(label("shoe").sub("entity")).execute();
 
         assertTrue(exists(shoeType));
 
@@ -273,14 +273,14 @@ public class DeleteQueryTest {
         assertNotNull(movieGraph.graph().getEntityType("movie"));
         assertFalse(exists(movie));
 
-        qb.match(var("x").name("movie").sub("entity")).delete("x").execute();
+        qb.match(var("x").label("movie").sub("entity")).delete("x").execute();
 
         assertNull(movieGraph.graph().getEntityType("movie"));
     }
 
     @Test
     public void testErrorWhenDeleteEntityTypeWithInstances() {
-        MatchQuery movieType = qb.match(var("x").name("movie").sub("entity"));
+        MatchQuery movieType = qb.match(var("x").label("movie").sub("entity"));
         MatchQuery movie = qb.match(var("x").isa("movie"));
 
         assertTrue(exists(movieType));
@@ -293,7 +293,7 @@ public class DeleteQueryTest {
 
     @Test
     public void testErrorWhenDeleteSuperEntityType() {
-        MatchQuery productionType = qb.match(var("x").name("production").sub("entity"));
+        MatchQuery productionType = qb.match(var("x").label("production").sub("entity"));
 
         assertTrue(exists(productionType));
 
@@ -304,7 +304,7 @@ public class DeleteQueryTest {
 
     @Test
     public void testErrorWhenDeleteRoleTypeWithPlayers() {
-        MatchQuery actor = qb.match(var("x").name("actor"));
+        MatchQuery actor = qb.match(var("x").label("actor"));
 
         assertTrue(exists(actor));
 
@@ -316,15 +316,8 @@ public class DeleteQueryTest {
     @Test
     public void testErrorWhenDeleteValue() {
         exception.expect(IllegalStateException.class);
-        exception.expectMessage(allOf(containsString("delet"), containsString("value")));
-        qb.match(var("x").isa("movie")).delete(var("x").value("hello")).execute();
-    }
-
-    @Test
-    public void testErrorWhenDeleteVariableResource() {
-        exception.expect(IllegalStateException.class);
-        exception.expectMessage(allOf(containsString("delet"), containsString("has"), containsString("$y")));
-        qb.match(var("x").isa("movie")).delete(var("x").has(var("y"))).execute();
+        exception.expectMessage(allOf(containsString("delet"), containsString("val")));
+        qb.match(var("x").isa("movie")).delete(var("x").val("hello")).execute();
     }
 
     private boolean exists(MatchQuery query) {

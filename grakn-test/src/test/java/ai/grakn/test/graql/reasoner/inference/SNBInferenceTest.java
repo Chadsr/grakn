@@ -21,18 +21,20 @@ package ai.grakn.test.graql.reasoner.inference;
 import ai.grakn.graql.MatchQuery;
 import ai.grakn.graql.QueryBuilder;
 import ai.grakn.graql.VarName;
+import ai.grakn.graql.internal.reasoner.query.QueryAnswer;
+import ai.grakn.graql.admin.Unifier;
 import ai.grakn.graql.internal.reasoner.query.QueryAnswers;
 import ai.grakn.graphs.SNBGraph;
+import ai.grakn.graql.internal.reasoner.query.UnifierImpl;
 import ai.grakn.test.GraphContext;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 import static ai.grakn.test.GraknTestEnv.usingTinker;
+import static java.util.stream.Collectors.toSet;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
@@ -155,10 +157,10 @@ public class SNBInferenceTest {
         
         String explicitQuery = "match " +
                 "$x isa person, has name $xName;$y isa tag, has name $yName;" +
-                "{$xName value 'Charlie';" +
-                "{$yName value 'Yngwie Malmsteen';} or {$yName value 'Cacophony';} or" +
-                "{$yName value 'Steve Vai';} or {$yName value 'Black Sabbath';};} or " +
-                "{$xName value 'Gary';$yName value 'Pink Floyd';};select $x, $y;";
+                "{$xName val 'Charlie';" +
+                "{$yName val 'Yngwie Malmsteen';} or {$yName val 'Cacophony';} or" +
+                "{$yName val 'Steve Vai';} or {$yName val 'Black Sabbath';};} or " +
+                "{$xName val 'Gary';$yName val 'Pink Floyd';};select $x, $y;";
 
         assertQueriesEqual(iqb.materialise(false).parse(queryString), qb.parse(explicitQuery));
         assertQueriesEqual(iqb.materialise(true).parse(queryString), qb.parse(explicitQuery));
@@ -172,10 +174,10 @@ public class SNBInferenceTest {
                 "$y isa person;$t isa tag;($y, $t) isa recommendation;";
         
         String explicitQuery = "match $y isa person, has name $yName;$t isa tag, has name $tName;" +
-                "{$yName value 'Charlie';" +
-                "{$tName value 'Yngwie Malmsteen';} or {$tName value 'Cacophony';} or" +
-                "{$tName value 'Steve Vai';} or {$tName value 'Black Sabbath';};} or " +
-                "{$yName value 'Gary';$tName value 'Pink Floyd';};select $y, $t;";
+                "{$yName val 'Charlie';" +
+                "{$tName val 'Yngwie Malmsteen';} or {$tName val 'Cacophony';} or" +
+                "{$tName val 'Steve Vai';} or {$tName val 'Black Sabbath';};} or " +
+                "{$yName val 'Gary';$tName val 'Pink Floyd';};select $y, $t;";
 
         assertQueriesEqual(iqb.materialise(false).parse(queryString), qb.parse(explicitQuery));
         assertQueriesEqual(iqb.materialise(true).parse(queryString), qb.parse(explicitQuery));
@@ -192,13 +194,13 @@ public class SNBInferenceTest {
                 "$x isa person;$y isa product;($x, $y) isa recommendation;";
         
         String explicitQuery = "match $x isa person, has name $xName;$y isa product, has name $yName;" +
-                "{$xName value 'Alice';$yName value 'War of the Worlds';} or" +
-                "{$xName value 'Bob';{$yName value 'Ducatti 1299';} or {$yName value 'The Good the Bad the Ugly';};} or" +
-                "{$xName value 'Charlie';{$yName value 'Blizzard of Ozz';} or {$yName value 'Stratocaster';};} or " +
-                "{$xName value 'Denis';{$yName value 'Colour of Magic';} or {$yName value 'Dorian Gray';};} or"+
-                "{$xName value 'Frank';$yName value 'Nocturnes';} or" +
-                "{$xName value 'Karl Fischer';{$yName value 'Faust';} or {$yName value 'Nocturnes';};} or " +
-                "{$xName value 'Gary';$yName value 'The Wall';};select $x, $y;";
+                "{$xName val 'Alice';$yName val 'War of the Worlds';} or" +
+                "{$xName val 'Bob';{$yName val 'Ducatti 1299';} or {$yName val 'The Good the Bad the Ugly';};} or" +
+                "{$xName val 'Charlie';{$yName val 'Blizzard of Ozz';} or {$yName val 'Stratocaster';};} or " +
+                "{$xName val 'Denis';{$yName val 'Colour of Magic';} or {$yName val 'Dorian Gray';};} or"+
+                "{$xName val 'Frank';$yName val 'Nocturnes';} or" +
+                "{$xName val 'Karl Fischer';{$yName val 'Faust';} or {$yName val 'Nocturnes';};} or " +
+                "{$xName val 'Gary';$yName val 'The Wall';};select $x, $y;";
 
         assertQueriesEqual(iqb.materialise(false).parse(queryString), qb.parse(explicitQuery));
         assertQueriesEqual(iqb.materialise(true).parse(queryString), qb.parse(explicitQuery));
@@ -212,13 +214,13 @@ public class SNBInferenceTest {
                 "$y isa person;$yy isa product;($y, $yy) isa recommendation;";
         
         String explicitQuery = "match $y isa person, has name $ny; $yy isa product, has name $nyy;" +
-                "{$ny value 'Alice';$nyy value 'War of the Worlds';} or" +
-                "{$ny value 'Bob';{$nyy value 'Ducatti 1299';} or {$nyy value 'The Good the Bad the Ugly';};} or" +
-                "{$ny value 'Charlie';{$nyy value 'Blizzard of Ozz';} or {$nyy value 'Stratocaster';};} or " +
-                "{$ny value 'Denis';{$nyy value 'Colour of Magic';} or {$nyy value 'Dorian Gray';};} or"+
-                "{$ny value 'Frank';$nyy value 'Nocturnes';} or" +
-                "{$ny value 'Karl Fischer';{$nyy value 'Faust';} or {$nyy value 'Nocturnes';};} or " +
-                "{$ny value 'Gary';$nyy value 'The Wall';};select $y, $yy;";
+                "{$ny val 'Alice';$nyy val 'War of the Worlds';} or" +
+                "{$ny val 'Bob';{$nyy val 'Ducatti 1299';} or {$nyy val 'The Good the Bad the Ugly';};} or" +
+                "{$ny val 'Charlie';{$nyy val 'Blizzard of Ozz';} or {$nyy val 'Stratocaster';};} or " +
+                "{$ny val 'Denis';{$nyy val 'Colour of Magic';} or {$nyy val 'Dorian Gray';};} or"+
+                "{$ny val 'Frank';$nyy val 'Nocturnes';} or" +
+                "{$ny val 'Karl Fischer';{$nyy val 'Faust';} or {$nyy val 'Nocturnes';};} or " +
+                "{$ny val 'Gary';$nyy val 'The Wall';};select $y, $yy;";
 
         assertQueriesEqual(iqb.materialise(false).parse(queryString), qb.parse(explicitQuery));
         assertQueriesEqual(iqb.materialise(true).parse(queryString), qb.parse(explicitQuery));
@@ -281,9 +283,9 @@ public class SNBInferenceTest {
                 "($y, $c) isa typing; select $x, $y;";
         
         String explicitQuery = "match $x isa person, has name $nx;$y isa product, has name $ny;" +
-                "{$nx value 'Alice';$ny value 'War of the Worlds';} or" +
-                "{$nx value 'Karl Fischer';$ny value 'Faust';} or " +
-                "{$nx value 'Denis';{$ny value 'Colour of Magic';} or {$ny value 'Dorian Gray';};};select $x, $y;";
+                "{$nx val 'Alice';$ny val 'War of the Worlds';} or" +
+                "{$nx val 'Karl Fischer';$ny val 'Faust';} or " +
+                "{$nx val 'Denis';{$ny val 'Colour of Magic';} or {$ny val 'Dorian Gray';};};select $x, $y;";
 
         assertQueriesEqual(iqb.materialise(false).parse(queryString), qb.parse(explicitQuery));
         assertQueriesEqual(iqb.materialise(true).parse(queryString), qb.parse(explicitQuery));
@@ -368,11 +370,11 @@ public class SNBInferenceTest {
         
         String queryString2 = "match $x isa person; $y isa person;$y has name 'Miguel Gonzalez';" +
                         "$z isa place; ($x, $y) isa knows; ($x, $z) isa resides; select $x, $z;";
-        Map<VarName, VarName> unifiers = new HashMap<>();
-        unifiers.put(VarName.of("z"), VarName.of("y"));
+        Unifier unifier = new UnifierImpl();
+        unifier.addMapping(VarName.of("z"), VarName.of("y"));
 
         QueryAnswers answers = queryAnswers(iqb.materialise(false).parse(queryString));
-        QueryAnswers answers2 =  queryAnswers(iqb.materialise(false).parse(queryString2)).unify(unifiers);
+        QueryAnswers answers2 =  queryAnswers(iqb.materialise(false).parse(queryString2)).unify(unifier);
         assertEquals(answers, answers2);
     }
 
@@ -442,9 +444,8 @@ public class SNBInferenceTest {
     }
 
     private QueryAnswers queryAnswers(MatchQuery query) {
-        return new QueryAnswers(query.admin().results());
+        return new QueryAnswers(query.admin().streamWithVarNames().map(QueryAnswer::new).collect(toSet()));
     }
-
     private void assertQueriesEqual(MatchQuery q1, MatchQuery q2) {
         assertEquals(q1.stream().collect(Collectors.toSet()), q2.stream().collect(Collectors.toSet()));
     }

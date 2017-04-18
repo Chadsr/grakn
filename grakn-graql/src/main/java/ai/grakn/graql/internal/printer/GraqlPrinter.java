@@ -31,11 +31,12 @@ import ai.grakn.graql.internal.util.CommonUtil;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static ai.grakn.graql.internal.util.StringConverter.idToString;
-import static ai.grakn.graql.internal.util.StringConverter.typeNameToString;
+import static ai.grakn.graql.internal.util.StringConverter.typeLabelToString;
 import static ai.grakn.graql.internal.util.StringConverter.valueToString;
 
 /**
@@ -56,7 +57,7 @@ class GraqlPrinter implements Printer<Function<StringBuilder, StringBuilder>> {
      * @return the type, color-coded
      */
     private static String colorType(Type type) {
-        return ANSI.color(typeNameToString(type.getName()), ANSI.PURPLE);
+        return ANSI.color(typeLabelToString(type.getLabel()), ANSI.PURPLE);
     }
 
     private final ResourceType[] resourceTypes;
@@ -78,7 +79,7 @@ class GraqlPrinter implements Printer<Function<StringBuilder, StringBuilder>> {
                 sb.append(colorKeyword("value ")).append(valueToString(concept.asResource().getValue()));
             } else if (concept.isType()) {
                 Type type = concept.asType();
-                sb.append(colorKeyword("type-name ")).append(colorType(type));
+                sb.append(colorKeyword("label ")).append(colorType(type));
 
                 Type superType = type.superType();
 
@@ -90,16 +91,13 @@ class GraqlPrinter implements Printer<Function<StringBuilder, StringBuilder>> {
             }
 
             if (concept.isRelation()) {
-                String relationString = concept.asRelation().rolePlayers().entrySet().stream().map(entry -> {
+                String relationString = concept.asRelation().allRolePlayers().entrySet().stream().flatMap(entry -> {
                     RoleType roleType = entry.getKey();
-                    Instance rolePlayer = entry.getValue();
+                    Set<Instance> instances = entry.getValue();
 
-                    if (rolePlayer != null) {
-                        String s = colorType(roleType) + ": id " + idToString(rolePlayer.getId());
-                        return Optional.of(s);
-                    } else {
-                        return Optional.<String>empty();
-                    }
+                    return instances.stream().map(instance ->
+                        Optional.of(colorType(roleType) + ": id " + idToString(instance.getId()))
+                    );
                 }).flatMap(CommonUtil::optionalToStream).collect(Collectors.joining(", "));
 
                 sb.append(" (").append(relationString).append(")");

@@ -18,20 +18,20 @@
 
 package ai.grakn.graph.internal;
 
-import ai.grakn.concept.Entity;
 import ai.grakn.concept.EntityType;
 import ai.grakn.concept.Instance;
 import ai.grakn.concept.RelationType;
 import ai.grakn.concept.Resource;
 import ai.grakn.concept.ResourceType;
 import ai.grakn.concept.RoleType;
-import ai.grakn.exception.ConceptNotUniqueException;
 import org.junit.Test;
 
+import java.time.LocalDateTime;
+
 import static ai.grakn.util.ErrorMessage.INVALID_DATATYPE;
-import static ai.grakn.util.ErrorMessage.RESOURCE_TYPE_UNIQUE;
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -56,18 +56,18 @@ public class ResourceTest extends GraphTestBase{
         Instance bob = randomThing.addEntity();
         Instance alice = randomThing.addEntity();
         Resource birthDate = resourceType.putResource("10/10/10");
-        hasResource.hasRole(resourceRole).hasRole(actorRole);
+        hasResource.relates(resourceRole).relates(actorRole);
 
         assertEquals(0, birthDate.ownerInstances().size());
 
         hasResource.addRelation().
-                putRolePlayer(resourceRole, birthDate).putRolePlayer(actorRole, pacino);
+                addRolePlayer(resourceRole, birthDate).addRolePlayer(actorRole, pacino);
         hasResource.addRelation().
-                putRolePlayer(resourceRole, birthDate).putRolePlayer(actorRole, jennifer);
+                addRolePlayer(resourceRole, birthDate).addRolePlayer(actorRole, jennifer);
         hasResource.addRelation().
-                putRolePlayer(resourceRole, birthDate).putRolePlayer(actorRole, bob);
+                addRolePlayer(resourceRole, birthDate).addRolePlayer(actorRole, bob);
         hasResource.addRelation().
-                putRolePlayer(resourceRole, birthDate).putRolePlayer(actorRole, alice);
+                addRolePlayer(resourceRole, birthDate).addRolePlayer(actorRole, alice);
 
         assertEquals(4, birthDate.ownerInstances().size());
         assertTrue(birthDate.ownerInstances().contains(pacino));
@@ -144,41 +144,20 @@ public class ResourceTest extends GraphTestBase{
     }
 
     @Test
-    public void testUniqueResource(){
-        //Create Ontology
-        RoleType primaryKeyRole = graknGraph.putRoleType("Primary Key Role");
-        RoleType entityRole = graknGraph.putRoleType("Entity Role");
-        RelationType hasPrimaryKey = graknGraph.putRelationType("Has Parimary Key").hasRole(primaryKeyRole).hasRole(entityRole);
-
-
-        //Create Resources
-        ResourceType<String> primaryKeyType = graknGraph.putResourceTypeUnique("My Primary Key", ResourceType.DataType.STRING).playsRole(primaryKeyRole);
-        Resource pimaryKey1 = primaryKeyType.putResource("A Primary Key 1");
-        Resource pimaryKey2 = primaryKeyType.putResource("A Primary Key 2");
-
-        //Create Entities
-        EntityType entityType = graknGraph.putEntityType("My Entity Type").playsRole(entityRole);
-        Entity entity1 = entityType.addEntity();
-        Entity entity2 = entityType.addEntity();
-        Entity entity3 = entityType.addEntity();
-
-        //Link Entities to resources
-        assertNull(pimaryKey1.owner());
-        hasPrimaryKey.addRelation().putRolePlayer(primaryKeyRole, pimaryKey1).putRolePlayer(entityRole, entity1);
-        assertEquals(entity1, pimaryKey1.owner());
-
-        hasPrimaryKey.addRelation().putRolePlayer(primaryKeyRole, pimaryKey2).putRolePlayer(entityRole, entity2);
-
-        expectedException.expect(ConceptNotUniqueException.class);
-        expectedException.expectMessage(RESOURCE_TYPE_UNIQUE.getMessage(pimaryKey1.getId(), entity1.getId()));
-
-        hasPrimaryKey.addRelation().putRolePlayer(primaryKeyRole, pimaryKey1).putRolePlayer(entityRole, entity3);
-    }
-
-    @Test
     public void testNonUniqueResource(){
         ResourceType<String> resourceType = graknGraph.putResourceType("A resourceType", ResourceType.DataType.STRING);
         Resource resource = resourceType.putResource("A Thing");
         assertNull(resource.owner());
+    }
+
+    @Test
+    public void whenSavingDateIntoResource_DateIsReturnedInSameFormat(){
+        LocalDateTime date = LocalDateTime.now();
+        ResourceType<LocalDateTime> resourceType = graknGraph.putResourceType("My Birthday", ResourceType.DataType.DATE);
+        Resource<LocalDateTime> myBirthday = resourceType.putResource(date);
+
+        assertEquals(date, myBirthday.getValue());
+        assertEquals(myBirthday, resourceType.getResource(date));
+        assertThat(graknGraph.getResourcesByValue(date), containsInAnyOrder(myBirthday));
     }
 }

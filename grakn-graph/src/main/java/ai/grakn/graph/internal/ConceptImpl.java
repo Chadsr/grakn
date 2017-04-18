@@ -44,7 +44,9 @@ import org.apache.tinkerpop.gremlin.structure.Element;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.apache.tinkerpop.gremlin.structure.VertexProperty;
 
+import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -65,6 +67,7 @@ import java.util.stream.StreamSupport;
  *           For example an {@link EntityType}, {@link Entity}, {@link RelationType} etc . . .
  */
 abstract class ConceptImpl<T extends Concept> implements Concept {
+    private ComponentCache<Boolean> cachedIsShard = new ComponentCache<>(() -> getPropertyBoolean(Schema.ConceptProperty.IS_SHARD));
     private final AbstractGraknGraph graknGraph;
     private final ConceptId conceptId;
     private final Vertex vertex;
@@ -144,13 +147,6 @@ abstract class ConceptImpl<T extends Concept> implements Concept {
      * Deletes the node and adds it neighbours for validation
      */
     void deleteNode(){
-        // tracking
-        getVertex().edges(Direction.BOTH).
-                forEachRemaining(
-                        e -> {
-                            graknGraph.getConceptLog().trackConceptForValidation(getGraknGraph().getElementFactory().buildConcept(e.inVertex()));
-                            graknGraph.getConceptLog().trackConceptForValidation(getGraknGraph().getElementFactory().buildConcept(e.outVertex()));}
-                );
         graknGraph.getConceptLog().removeConcept(this);
         // delete node
         getVertex().remove();
@@ -446,8 +442,8 @@ abstract class ConceptImpl<T extends Concept> implements Concept {
      *
      * @return The base ttpe of this concept which helps us identify the concept
      */
-    String getBaseType(){
-        return getVertex().label();
+    Schema.BaseType getBaseType(){
+        return Schema.BaseType.valueOf(getVertex().label());
     }
 
     /**
@@ -528,7 +524,6 @@ abstract class ConceptImpl<T extends Concept> implements Concept {
         return fromVertex.addEdge(type, getVertex());
     }
 
-
     //------------ Base Equality ------------
     /**
      *
@@ -548,10 +543,11 @@ abstract class ConceptImpl<T extends Concept> implements Concept {
 
     @Override
     public final String toString(){
-        if (getGraknGraph().validVertex(vertex)) {
+        try {
+            getGraknGraph().validVertex(vertex);
             return innerToString();
-        } else {
-            // Concept has been deleted, so handle differently
+        } catch (RuntimeException e){
+            // Vertex is broken somehow. Most likely deleted.
             return "Id [" + getId() + "]";
         }
     }
@@ -582,5 +578,39 @@ abstract class ConceptImpl<T extends Concept> implements Concept {
     @Override
     public int compareTo(Concept o) {
         return this.getId().compareTo(o.getId());
+    }
+
+    //----------------------------------- Sharding Functionality
+    T createShard(){
+        Vertex shardVertex = getGraknGraph().addVertex(getBaseType());
+        shardVertex.addEdge(Schema.EdgeLabel.SHARD.getLabel(), getVertex());
+
+        ConceptImpl shardConcept = getGraknGraph().buildConcept(shardVertex);
+        shardConcept.isShard(true);
+        setProperty(Schema.ConceptProperty.CURRENT_SHARD, shardConcept.getId().getValue());
+
+        //noinspection unchecked
+        return (T) shardConcept;
+    }
+
+    Set<T> shards(){
+        return this.<T>getIncomingNeighbours(Schema.EdgeLabel.SHARD).collect(Collectors.toSet());
+    }
+
+    //TODO: Return implementation rather than interface
+    T currentShard(){
+        String currentShardId = getProperty(Schema.ConceptProperty.CURRENT_SHARD);
+        if(currentShardId == null) throw new ConceptException(ErrorMessage.CONCEPT_HAS_NO_SHARD.getMessage(this));
+
+        return getGraknGraph().getConcept(ConceptId.of(currentShardId));
+    }
+
+    boolean isShard(){
+        return cachedIsShard.get();
+    }
+
+    void isShard(Boolean isShard){
+        if(isShard) setProperty(Schema.ConceptProperty.IS_SHARD, isShard);
+        cachedIsShard.set(isShard);
     }
 }

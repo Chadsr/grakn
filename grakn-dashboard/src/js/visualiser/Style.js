@@ -18,6 +18,7 @@
 
 
 import * as API from '../util/HALTerms';
+import NodeSettings from '../NodeSettings';
 
 /*
  * Styling options for visualised graph.
@@ -52,48 +53,65 @@ export default class Style {
     };
   }
 
+  getNodeColour(type, baseType) {
+    if (!Object.keys(NodeSettings.getNodeColour(type)).length && !Object.keys(NodeSettings.getNodeColour(baseType)).length) {
+      return this.getDefaultNodeColour(type, baseType);
+    } else if (type.length) {
+      return NodeSettings.getNodeColour(type);
+    }
+    return NodeSettings.getNodeColour(baseType);
+  }
     /**
      * Return node colour based on its @baseType or default colour otherwise.
      * @param baseType
      * @returns {*}
      */
-  getNodeColour(type, baseType) {
-        // Meta-ontology
-    if (type === '' && baseType !== API.GENERATED_RELATION_TYPE) {
-      return {
-        background: '#a80a74',
-        highlight: {
-          background: '#f15cc0',
-        },
-      };
-    }
-
+  getDefaultNodeColour(type, baseType) {
+    let colourObject;
         // User defined ontology & instances
     switch (baseType) {
       case API.GENERATED_RELATION_TYPE:
-        return {
+      case API.INFERRED_RELATION_TYPE:
+        colourObject = {
           background: '#20a194',
           highlight: {
             background: '#0aca88',
           },
         };
+        break;
+      case API.ROLE_TYPE:
       case API.RELATION_TYPE:
-        return {
+      case API.RELATION:
+        colourObject = {
           background: '#20a194',
           highlight: {
             background: '#0aca88',
           },
         };
+        break;
       case API.RESOURCE_TYPE:
-        return {
+      case API.RESOURCE:
+        colourObject = {
           background: '#1d65cb',
           highlight: {
             background: '#0cb8f7',
           },
         };
+        break;
       default:
-        return this.node.colour;
+        if (type === '') {
+          colourObject = {
+            background: '#a80a74',
+            highlight: {
+              background: '#f15cc0',
+            },
+          };
+        } else {
+          colourObject = this.node.colour;
+        }
     }
+
+    return colourObject;
   }
 
     /**
@@ -102,13 +120,35 @@ export default class Style {
      * @returns {string}
      */
   getNodeShape(baseType) {
+    let shape;
     switch (baseType) {
-      case 'resource':
-      case 'relation':
-      case 'entity':
+      case API.RELATION:
+      case API.GENERATED_RELATION_TYPE:
+      case API.INFERRED_RELATION_TYPE:
+      case API.ROLE_TYPE:
+        shape = 'dot';
+        break;
       default:
-        return this.node.shape;
+        shape = this.node.shape;
     }
+    return shape;
+  }
+
+  getNodeSize(baseType) {
+    let size;
+    switch (baseType) {
+      case API.RELATION:
+      case API.GENERATED_RELATION_TYPE:
+      case API.INFERRED_RELATION_TYPE:
+        size = 8;
+        break;
+      case API.ROLE_TYPE:
+        size = 10;
+        break;
+      default:
+        size = 25;
+    }
+    return size;
   }
 
     /**
@@ -126,7 +166,15 @@ export default class Style {
      * Return edge colour configuration.
      * @returns {ENGINE.Style.edge.colour|{color, highlight}}
      */
-  getEdgeColour() {
+  getEdgeColour(label) {
+    // let colour;
+    // switch (label) {
+    //   case 'relates':
+    //     colour = '#2bbbad';
+    //     break;
+    //   default:
+    //     colour = this.edge.colour;
+    // }
     return this.edge.colour;
   }
 
@@ -134,7 +182,15 @@ export default class Style {
      * Return edge label font configuration.
      * @returns {{color: string}}
      */
-  getEdgeFont() {
+  getEdgeFont(label) {
+    // let font;
+    // switch (label) {
+    //   case 'relates':
+    //     font = '#2bbbad';
+    //     break;
+    //   default:
+    //     font = this.edge.font;
+    // }
     return this.edge.font;
   }
 

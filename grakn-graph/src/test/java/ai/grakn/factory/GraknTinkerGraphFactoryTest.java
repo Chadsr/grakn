@@ -20,90 +20,107 @@ package ai.grakn.factory;
 
 import ai.grakn.Grakn;
 import ai.grakn.GraknGraph;
+import ai.grakn.GraknTxType;
 import ai.grakn.exception.GraphRuntimeException;
 import ai.grakn.graph.internal.AbstractGraknGraph;
 import ai.grakn.graph.internal.GraknTinkerGraph;
-import org.apache.tinkerpop.gremlin.structure.Graph;
+import ai.grakn.util.ErrorMessage;
 import org.apache.tinkerpop.gremlin.tinkergraph.structure.TinkerGraph;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
+
 import static ai.grakn.util.ErrorMessage.NULL_VALUE;
-import static junit.framework.TestCase.assertFalse;
-import static junit.framework.TestCase.assertTrue;
+import static ai.grakn.util.ErrorMessage.TRANSACTION_ALREADY_OPEN;
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertThat;
 
 public class GraknTinkerGraphFactoryTest {
+    private final static String TEST_CONFIG = "../conf/test/tinker/grakn.properties";
+    private final static Properties TEST_PROPERTIES = new Properties();
     private InternalFactory tinkerGraphFactory;
+
+    @BeforeClass
+    public static void setupProperties(){
+        try (InputStream in = new FileInputStream(TEST_CONFIG)){
+            TEST_PROPERTIES.load(in);
+        } catch (IOException e) {
+            throw new RuntimeException(ErrorMessage.INVALID_PATH_TO_CONFIG.getMessage(TEST_CONFIG), e);
+        }
+    }
+
     @Rule
     public final ExpectedException expectedException = ExpectedException.none();
 
     @Before
-    public void setTinkerGraphFactory(){
-        tinkerGraphFactory = new TinkerInternalFactory("test", Grakn.IN_MEMORY, null);
+    public void setupTinkerGraphFactory(){
+        tinkerGraphFactory = new TinkerInternalFactory("test", Grakn.IN_MEMORY, TEST_PROPERTIES);
     }
 
     @Test
-    public void testBuildTinkerGraph() throws Exception {
-        GraknGraph graph = tinkerGraphFactory.getGraph(false);
+    public void whenBuildingGraphUsingTinkerFactory_ReturnGraknTinkerGraph() throws Exception {
+        GraknGraph graph = tinkerGraphFactory.open(GraknTxType.WRITE);
         assertThat(graph, instanceOf(GraknTinkerGraph.class));
         assertThat(graph, instanceOf(AbstractGraknGraph.class));
-
-        try {
-            graph.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 
     @Test
-    public void testFactorySingleton(){
-        GraknGraph graph1 = tinkerGraphFactory.getGraph(false);
-        GraknGraph graph1_copy = tinkerGraphFactory.getGraph(false);
+    public void whenBuildingGraphFromTheSameFactory_ReturnSingletonGraphs(){
+        GraknGraph graph1 = tinkerGraphFactory.open(GraknTxType.WRITE);
+        TinkerGraph tinkerGraph1 = ((GraknTinkerGraph) graph1).getTinkerPopGraph();
+        graph1.close();
+        GraknGraph graph1_copy = tinkerGraphFactory.open(GraknTxType.WRITE);
+        graph1_copy.close();
 
-        GraknGraph graph2 = tinkerGraphFactory.getGraph(true);
-        GraknGraph graph2_copy = tinkerGraphFactory.getGraph(true);
+        GraknGraph graph2 = tinkerGraphFactory.open(GraknTxType.BATCH);
+        TinkerGraph tinkerGraph2 = ((GraknTinkerGraph) graph2).getTinkerPopGraph();
+        graph2.close();
+        GraknGraph graph2_copy = tinkerGraphFactory.open(GraknTxType.BATCH);
 
         assertEquals(graph1, graph1_copy);
         assertEquals(graph2, graph2_copy);
 
         assertNotEquals(graph1, graph2);
-
-        TinkerGraph tinkerGraph1 = ((GraknTinkerGraph) graph1).getTinkerPopGraph();
-        TinkerGraph tinkerGraph2 = ((GraknTinkerGraph) graph2).getTinkerPopGraph();
-
         assertEquals(tinkerGraph1, tinkerGraph2);
     }
 
     @Test
-    public void testSimpleBuild(){
-        GraknTinkerGraph mg1 = (GraknTinkerGraph) tinkerGraphFactory.getGraph(true);
-        GraknTinkerGraph mg2 = (GraknTinkerGraph) tinkerGraphFactory.getGraph(false);
-
-        assertTrue(mg1.isBatchLoadingEnabled());
-        assertFalse(mg2.isBatchLoadingEnabled());
-        assertNotEquals(mg1, mg2);
-        assertEquals(mg1.getTinkerPopGraph(), mg2.getTinkerPopGraph());
+    public void whenRetrievingGraphFromGraknTinkerGraph_ReturnTinkerGraph(){
+        assertThat(tinkerGraphFactory.getTinkerPopGraph(false), instanceOf(TinkerGraph.class));
     }
 
     @Test
-    public void testGetTinkerPopGraph(){
-        Graph mg1 = tinkerGraphFactory.getTinkerPopGraph(false);
-        assertThat(mg1, instanceOf(TinkerGraph.class));
-    }
-
-    @Test
-    public void testGetNullKeySpace(){
+    public void whenCreatingFactoryWithNullKeyspace_Throw(){
         expectedException.expect(GraphRuntimeException.class);
         expectedException.expectMessage(NULL_VALUE.getMessage("keyspace"));
-
         tinkerGraphFactory = new TinkerInternalFactory(null, null, null);
-        tinkerGraphFactory.getGraph(false);
+    }
+
+    @Test
+    public void whenGettingGraphFromFactoryWithAlreadyOpenGraph_Throw(){
+        TinkerInternalFactory factory = new TinkerInternalFactory("mytest", Grakn.IN_MEMORY, TEST_PROPERTIES);
+        factory.open(GraknTxType.WRITE);
+        expectedException.expect(GraphRuntimeException.class);
+        expectedException.expectMessage(TRANSACTION_ALREADY_OPEN.getMessage("mytest"));
+        factory.open(GraknTxType.WRITE);
+    }
+
+    @Test
+    public void whenGettingGraphFromFactoryClosingItAndGettingItAgain_ReturnGraph(){
+        TinkerInternalFactory factory = new TinkerInternalFactory("mytest", Grakn.IN_MEMORY, TEST_PROPERTIES);
+        GraknGraph graph1 = factory.open(GraknTxType.WRITE);
+        graph1.close();
+        GraknTinkerGraph graph2 = factory.open(GraknTxType.WRITE);
+        assertEquals(graph1, graph2);
     }
 
 }

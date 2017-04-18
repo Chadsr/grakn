@@ -18,38 +18,35 @@
 
 package ai.grakn.graph.internal;
 
-import ai.grakn.concept.Concept;
 import ai.grakn.concept.Entity;
 import ai.grakn.concept.EntityType;
 import ai.grakn.concept.Instance;
 import ai.grakn.concept.RelationType;
+import ai.grakn.concept.Resource;
 import ai.grakn.concept.ResourceType;
 import ai.grakn.concept.RoleType;
-import ai.grakn.concept.Rule;
-import ai.grakn.concept.RuleType;
 import ai.grakn.concept.Type;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 import ai.grakn.exception.ConceptException;
-import ai.grakn.graql.Pattern;
 import ai.grakn.util.ErrorMessage;
 import ai.grakn.util.Schema;
 import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.util.Collection;
-import java.util.HashSet;
 import java.util.Set;
 
+import static ai.grakn.util.ErrorMessage.CANNOT_BE_KEY_AND_RESOURCE;
 import static ai.grakn.util.ErrorMessage.CANNOT_DELETE;
 import static ai.grakn.util.ErrorMessage.META_TYPE_IMMUTABLE;
 import static java.util.stream.Collectors.toSet;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.empty;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -71,165 +68,104 @@ public class EntityTypeTest extends GraphTestBase{
     }
 
     @Test
-    public void testItemName(){
+    public void creatingAccessingDeletingScopes_Works() throws ConceptException {
+        EntityType entityType = graknGraph.putEntityType("entity type");
+        Instance scope1 = entityType.addEntity();
+        Instance scope2 = entityType.addEntity();
+        Instance scope3 = entityType.addEntity();
+        assertThat(entityType.scopes(), is(empty()));
+
+        entityType.scope(scope1);
+        entityType.scope(scope2);
+        entityType.scope(scope3);
+        assertThat(entityType.scopes(), containsInAnyOrder(scope1, scope2, scope3));
+
+        scope1.delete();
+        assertThat(entityType.scopes(), containsInAnyOrder(scope2, scope3));
+
+        entityType.deleteScope(scope2);
+        assertThat(entityType.scopes(), containsInAnyOrder(scope3));
+    }
+
+    @Test
+    public void whenDeletingEntityTypeWithSubTypes_Throw() throws ConceptException{
+        EntityType c1 = graknGraph.putEntityType("C1");
+        EntityType c2 = graknGraph.putEntityType("C2");
+        c1.superType(c2);
+
+        expectedException.expect(ConceptException.class);
+        expectedException.expectMessage(ErrorMessage.CANNOT_DELETE.getMessage(c2.getLabel()));
+
+        c2.delete();
+    }
+
+    @Test
+    public void whenGettingTheLabelOfType_TheTypeLabelIsReturned(){
         Type test = graknGraph.putEntityType("test");
-        assertEquals(TypeName.of("test"), test.getName());
+        assertEquals(TypeLabel.of("test"), test.getLabel());
     }
 
     @Test
-    public void testGetRoleTypeAsConceptType(){
+    public void whenGettingARoleTypeAsType_TheTypeIsReturned(){
         RoleType test1 = graknGraph.putRoleType("test");
-        Type test2 = graknGraph.getEntityType("test");
-        assertNull(test2);
+        Type test2 = graknGraph.getType(TypeLabel.of("test"));
+        assertEquals(test1, test2);
     }
 
     @Test
-    public void testGetPlayedRole() throws Exception{
+    public void whenGettingTheRolesPlayedByType_ReturnTheRoles() throws Exception{
         RoleType monster = graknGraph.putRoleType("monster");
         RoleType animal = graknGraph.putRoleType("animal");
-        RoleType monsterSub = graknGraph.putRoleType("monsterSub");
+        RoleType monsterEvil = graknGraph.putRoleType("evil monster").superType(monster);
 
-        EntityType creature = graknGraph.putEntityType("creature");
-        EntityType creatureSub = graknGraph.putEntityType("creatureSub").superType(creature);
+        EntityType creature = graknGraph.putEntityType("creature").plays(monster).plays(animal);
+        EntityType creatureMysterious = graknGraph.putEntityType("mysterious creature").superType(creature).plays(monsterEvil);
 
-        assertEquals(0, creature.playsRoles().size());
-        assertEquals(0, creatureSub.playsRoles().size());
-
-        creature.playsRole(monster);
-        creature.playsRole(animal);
-        monsterSub.superType(monster);
-
-        creatureSub.playsRole(monsterSub);
-
-        assertEquals(2, creature.playsRoles().size());
-        assertTrue(creature.playsRoles().contains(monster));
-        assertTrue(creature.playsRoles().contains(animal));
-
-        assertEquals(3, creatureSub.playsRoles().size());
-        assertTrue(creatureSub.playsRoles().contains(monster));
-        assertTrue(creatureSub.playsRoles().contains(animal));
-        assertTrue(creatureSub.playsRoles().contains(monsterSub));
+        assertThat(creature.plays(), containsInAnyOrder(monster, animal));
+        assertThat(creatureMysterious.plays(), containsInAnyOrder(monster, animal, monsterEvil));
     }
 
     @Test
-    public void testGetSubHierarchySuperSet() throws Exception{
-        TypeImpl c1 = (TypeImpl) graknGraph.putEntityType("c1");
-        TypeImpl c2 = (TypeImpl) graknGraph.putEntityType("c2");
-        TypeImpl c3 = (TypeImpl) graknGraph.putEntityType("c3'");
-        TypeImpl c4 = (TypeImpl) graknGraph.putEntityType("c4");
+    public void whenGettingTheSuperSet_ReturnAllOfItsSuperTypes() throws Exception{
+        EntityType entityType = graknGraph.admin().getMetaEntityType();
+        EntityType c1 = graknGraph.putEntityType("c1");
+        EntityType c2 = graknGraph.putEntityType("c2").superType(c1);
+        EntityType c3 = graknGraph.putEntityType("c3").superType(c2);
+        EntityType c4 = graknGraph.putEntityType("c4").superType(c1);
 
-        assertTrue(c1.superTypeSet().contains(c1));
-        assertFalse(c1.superTypeSet().contains(c2));
-        assertFalse(c1.superTypeSet().contains(c3));
-        assertFalse(c1.superTypeSet().contains(c4));
+        Set<EntityType> c1SuperTypes = ((TypeImpl) c1).superTypeSet();
+        Set<EntityType> c2SuperTypes = ((TypeImpl) c2).superTypeSet();
+        Set<EntityType> c3SuperTypes = ((TypeImpl) c3).superTypeSet();
+        Set<EntityType> c4SuperTypes = ((TypeImpl) c4).superTypeSet();
 
-        c1.superType(c2);
-        assertTrue(c1.superTypeSet().contains(c1));
-        assertTrue(c1.superTypeSet().contains(c2));
-        assertFalse(c1.superTypeSet().contains(c3));
-        assertFalse(c1.superTypeSet().contains(c4));
-
-        c2.superType(c3);
-        assertTrue(c1.superTypeSet().contains(c1));
-        assertTrue(c1.superTypeSet().contains(c2));
-        assertTrue(c1.superTypeSet().contains(c3));
-        assertFalse(c1.superTypeSet().contains(c4));
+        assertThat(c1SuperTypes, containsInAnyOrder(entityType, c1));
+        assertThat(c2SuperTypes, containsInAnyOrder(entityType, c2, c1));
+        assertThat(c3SuperTypes, containsInAnyOrder(entityType, c3, c2, c1));
+        assertThat(c4SuperTypes, containsInAnyOrder(entityType, c4, c1));
     }
 
     @Test
-    public void testGetSubChildrenSet(){
+    public void whenGettingTheSubTypesOfaType_ReturnAllSubTypes(){
         EntityType parent = graknGraph.putEntityType("parent");
-        EntityType child1 = graknGraph.putEntityType("c1");
-        EntityType child2 = graknGraph.putEntityType("c2");
-        EntityType child3 = graknGraph.putEntityType("c3");
+        EntityType c1 = graknGraph.putEntityType("c1").superType(parent);
+        EntityType c2 = graknGraph.putEntityType("c2").superType(parent);
+        EntityType c3 = graknGraph.putEntityType("c3").superType(c1);
 
-        assertEquals(1, parent.subTypes().size());
-
-        child1.superType(parent);
-        child2.superType(parent);
-        child3.superType(parent);
-
-        assertEquals(4, parent.subTypes().size());
-        assertTrue(parent.subTypes().contains(child3));
-        assertTrue(parent.subTypes().contains(child2));
-        assertTrue(parent.subTypes().contains(child1));
+        assertThat(parent.subTypes(), containsInAnyOrder(parent, c1, c2, c3));
+        assertThat(c1.subTypes(), containsInAnyOrder(c1, c3));
+        assertThat(c2.subTypes(), containsInAnyOrder(c2));
+        assertThat(c3.subTypes(), containsInAnyOrder(c3));
     }
 
     @Test
-    public void testGetSubHierarchySubSet(){
-        EntityType parent = graknGraph.putEntityType("p");
-        EntityType superParent = graknGraph.putEntityType("sp");
-        EntityType child1 = graknGraph.putEntityType("c1");
-        EntityType child2 = graknGraph.putEntityType("c2");
-        EntityType child3 = graknGraph.putEntityType("c3");
-        EntityType child3a = graknGraph.putEntityType("3a");
-        EntityType child3b = graknGraph.putEntityType("3b");
-        EntityType child3b1 = graknGraph.putEntityType("3b1");
-        EntityType child3b2 = graknGraph.putEntityType("3b2");
-        EntityType child3b3 = graknGraph.putEntityType("3b3");
+    public void whenGettingTheSuperTypeOfType_ReturnSuperType(){
+        EntityType c1 = graknGraph.putEntityType("c1");
+        EntityType c2 = graknGraph.putEntityType("c2").superType(c1);
+        EntityType c3 = graknGraph.putEntityType("c3").superType(c2);
 
-        assertEquals(1, ((TypeImpl) parent).subTypes().size());
-
-        parent.superType(superParent);
-        child1.superType(parent);
-        child2.superType(parent);
-        child3.superType(parent);
-        child3a.superType(child3);
-        child3b.superType(child3a);
-        child3b1.superType(child3b);
-        child3b2.superType(child3b);
-        child3b3.superType(child3b);
-
-        assertEquals(9, ((TypeImpl) parent).subTypes().size());
-        assertTrue(((TypeImpl) parent).subTypes().contains(parent));
-        assertTrue(((TypeImpl) parent).subTypes().contains(child3));
-        assertTrue(((TypeImpl) parent).subTypes().contains(child2));
-        assertTrue(((TypeImpl) parent).subTypes().contains(child1));
-        assertTrue(((TypeImpl) parent).subTypes().contains(child3a));
-        assertTrue(((TypeImpl) parent).subTypes().contains(child3b));
-        assertTrue(((TypeImpl) parent).subTypes().contains(child3b1));
-        assertTrue(((TypeImpl) parent).subTypes().contains(child3b2));
-        assertTrue(((TypeImpl) parent).subTypes().contains(child3b3));
-        assertFalse(((TypeImpl) parent).subTypes().contains(superParent));
-
-    }
-
-    @Test
-    public void testDuplicateConceptType(){
-        Type movie = graknGraph.putEntityType("movie");
-        Type moive2 = graknGraph.putEntityType("movie");
-        assertEquals(movie, moive2);
-    }
-
-    @Test
-    public void testSuperConceptType(){
-        EntityType parent = graknGraph.putEntityType("p");
-        EntityType superParent = graknGraph.putEntityType("sp");
-        EntityType superParent2 = graknGraph.putEntityType("sp2");
-
-        parent.superType(superParent);
-        assertNotEquals(superParent2, parent.superType());
-        assertEquals(superParent, parent.superType());
-
-        parent.superType(superParent2);
-        assertNotEquals(superParent, parent.superType());
-        assertEquals(superParent2, parent.superType());
-    }
-
-    @Test
-    public void allowsRoleType(){
-        EntityTypeImpl conceptType = (EntityTypeImpl) graknGraph.putEntityType("ct");
-        RoleType roleType1 = graknGraph.putRoleType("rt1'");
-        RoleType roleType2 = graknGraph.putRoleType("rt2");
-
-        conceptType.playsRole(roleType1).playsRole(roleType2);
-        Set<RoleType> foundRoles = new HashSet<>();
-        graknGraph.getTinkerPopGraph().traversal().V(conceptType.getId().getRawValue()).
-                out(Schema.EdgeLabel.PLAYS_ROLE.getLabel()).forEachRemaining(r -> foundRoles.add(graknGraph.getRoleType(r.value(Schema.ConceptProperty.NAME.name()))));
-
-        assertEquals(2, foundRoles.size());
-        assertTrue(foundRoles.contains(roleType1));
-        assertTrue(foundRoles.contains(roleType2));
+        assertEquals(graknGraph.admin().getMetaEntityType(), c1.superType());
+        assertEquals(c1, c2.superType());
+        assertEquals(c2, c3.superType());
     }
 
     @Test
@@ -243,193 +179,142 @@ public class EntityTypeTest extends GraphTestBase{
     }
 
     @Test
-    public void testRulesOfHypothesis(){
-        Pattern lhs = graknGraph.graql().parsePattern("$x isa entity-type");
-        Pattern rhs = graknGraph.graql().parsePattern("$x isa entity-type");
-        Type type = graknGraph.putEntityType("A Concept Type");
-        RuleType ruleType = graknGraph.putRuleType("A Rule Type");
-        assertEquals(0, type.getRulesOfHypothesis().size());
-        Rule rule1 = ruleType.addRule(lhs, rhs).addHypothesis(type);
-        Rule rule2 = ruleType.addRule(lhs, rhs).addHypothesis(type);
-        assertEquals(2, type.getRulesOfHypothesis().size());
-        assertTrue(type.getRulesOfHypothesis().contains(rule1));
-        assertTrue(type.getRulesOfHypothesis().contains(rule2));
-    }
-
-    @Test
-    public void getRulesOfConclusion(){
-        Pattern lhs = graknGraph.graql().parsePattern("$x isa entity-type");
-        Pattern rhs = graknGraph.graql().parsePattern("$x isa entity-type");
-        Type type = graknGraph.putEntityType("A Concept Type");
-        RuleType ruleType = graknGraph.putRuleType("A Rule Type");
-        assertEquals(0, type.getRulesOfConclusion().size());
-        Rule rule1 = ruleType.addRule(lhs, rhs).addConclusion(type);
-        Rule rule2 = ruleType.addRule(lhs, rhs).addConclusion(type);
-        assertEquals(2, type.getRulesOfConclusion().size());
-        assertTrue(type.getRulesOfConclusion().contains(rule1));
-        assertTrue(type.getRulesOfConclusion().contains(rule2));
-    }
-
-    @Test
-    public void testDeletePlaysRole(){
-        EntityType type = graknGraph.putEntityType("A Concept Type");
+    public void whenRemovingRoleFromEntityType_TheRoleCanNoLongerBePlayed(){
         RoleType role1 = graknGraph.putRoleType("A Role 1");
         RoleType role2 = graknGraph.putRoleType("A Role 2");
-        assertEquals(0, type.playsRoles().size());
-        type.playsRole(role1).playsRole(role2);
-        assertEquals(2, type.playsRoles().size());
-        assertTrue(type.playsRoles().contains(role1));
-        assertTrue(type.playsRoles().contains(role2));
-        type.deletePlaysRole(role1);
-        assertEquals(1, type.playsRoles().size());
-        assertFalse(type.playsRoles().contains(role1));
-        assertTrue(type.playsRoles().contains(role2));
+        EntityType type = graknGraph.putEntityType("A Concept Type").plays(role1).plays(role2);
+
+        assertThat(type.plays(), containsInAnyOrder(role1, role2));
+        type.deletePlays(role1);
+        assertThat(type.plays(), containsInAnyOrder( role2));
     }
 
     @Test
-    public void testDeleteConceptType(){
-        EntityType toDelete = graknGraph.putEntityType("1");
-        assertNotNull(graknGraph.getEntityType("1"));
-        toDelete.delete();
-        assertNull(graknGraph.getEntityType("1"));
+    public void whenGettingTheInstancesOfType_ReturnAllInstances(){
+        EntityType e1 = graknGraph.putEntityType("e1");
+        EntityType e2 = graknGraph.putEntityType("e2").superType(e1);
+        EntityType e3 = graknGraph.putEntityType("e3").superType(e1);
 
-        toDelete = graknGraph.putEntityType("2");
-        Instance instance = toDelete.addEntity();
+        Entity e2_child1 = e2.addEntity();
+        Entity e2_child2 = e2.addEntity();
 
-        boolean conceptExceptionThrown = false;
-        try{
-            toDelete.delete();
-        } catch (ConceptException e){
-            conceptExceptionThrown = true;
-        }
-        assertTrue(conceptExceptionThrown);
+        Entity e3_child1 = e3.addEntity();
+        Entity e3_child2 = e3.addEntity();
+        Entity e3_child3 = e3.addEntity();
+
+        assertThat(e1.instances(), containsInAnyOrder(e2_child1, e2_child2, e3_child1, e3_child2, e3_child3));
+        assertThat(e2.instances(), containsInAnyOrder(e2_child1, e2_child2));
+        assertThat(e3.instances(), containsInAnyOrder(e3_child1, e3_child2, e3_child3));
     }
 
     @Test
-    public void testGetInstances(){
-        EntityType entityType = graknGraph.putEntityType("Entity");
-        RoleType actor = graknGraph.putRoleType("Actor");
-        Entity thing = entityType.addEntity();
-        EntityType production = graknGraph.putEntityType("Production");
-        EntityType movie = graknGraph.putEntityType("Movie").superType(production);
-        Instance musicVideo = production.addEntity();
-        Instance godfather = movie.addEntity();
-
-        Collection<? extends Concept> types = graknGraph.getMetaConcept().instances();
-        Collection<? extends Concept> data = production.instances();
-
-        assertEquals(3, types.size());
-        assertEquals(2, data.size());
-
-        assertTrue(types.contains(musicVideo));
-        assertTrue(types.contains(godfather));
-        assertTrue(types.contains(thing));
-
-        assertTrue(data.contains(godfather));
-        assertTrue(data.contains(musicVideo));
-    }
-
-    @Test
-    public void testCircularSub(){
+    public void settingTheSuperTypeToItself_Throw(){
         EntityType entityType = graknGraph.putEntityType("Entity");
         expectedException.expect(ConceptException.class);
-        expectedException.expectMessage(ErrorMessage.LOOP_DETECTED.getMessage(entityType.getName(), Schema.EdgeLabel.SUB.getLabel()));
+        expectedException.expectMessage(ErrorMessage.SUPER_TYPE_LOOP_DETECTED.getMessage(entityType.getLabel(), entityType.getLabel()));
         entityType.superType(entityType);
     }
 
-    @Test(expected=ConceptException.class)
-    public void testCircularSubLong(){
+    @Test
+    public void whenCyclicSuperTypes_Throw(){
         EntityType entityType1 = graknGraph.putEntityType("Entity1");
         EntityType entityType2 = graknGraph.putEntityType("Entity2");
         EntityType entityType3 = graknGraph.putEntityType("Entity3");
         entityType1.superType(entityType2);
         entityType2.superType(entityType3);
+
+        expectedException.expect(ConceptException.class);
+        expectedException.expectMessage(ErrorMessage.SUPER_TYPE_LOOP_DETECTED.getMessage(entityType3.getLabel(), entityType1.getLabel()));
+
         entityType3.superType(entityType1);
     }
 
     @Test
-    public void testMetaTypeIsAbstractImmutable(){
+    public void whenSettingMetaTypeToAbstract_Throw(){
         Type meta = graknGraph.getMetaRuleType();
 
         expectedException.expect(ConceptException.class);
-        expectedException.expectMessage(META_TYPE_IMMUTABLE.getMessage(meta.getName()));
+        expectedException.expectMessage(META_TYPE_IMMUTABLE.getMessage(meta.getLabel()));
 
         meta.setAbstract(true);
     }
 
     @Test
-    public void testMetaTypePlaysRoleImmutable(){
+    public void whenAddingRoleToMetaType_Throw(){
         Type meta = graknGraph.getMetaRuleType();
         RoleType roleType = graknGraph.putRoleType("A Role");
 
         expectedException.expect(ConceptException.class);
-        expectedException.expectMessage(META_TYPE_IMMUTABLE.getMessage(meta.getName()));
+        expectedException.expectMessage(META_TYPE_IMMUTABLE.getMessage(meta.getLabel()));
 
-        meta.playsRole(roleType);
+        meta.plays(roleType);
     }
 
     @Test
-    public void testHasResource(){
-        TypeName resourceTypeName = TypeName.of("Resource Type");
+    public void whenSpecifyingTheResourceTypeOfAnEntityType_EnsureTheImplicitStructureIsCreated(){
+        graknGraph.showImplicitConcepts(true);
+        TypeLabel resourceTypeLabel = TypeLabel.of("Resource Type");
         EntityType entityType = graknGraph.putEntityType("Entity1");
         ResourceType resourceType = graknGraph.putResourceType("Resource Type", ResourceType.DataType.STRING);
 
-        RelationType relationType = entityType.hasResource(resourceType);
-        assertEquals(Schema.Resource.HAS_RESOURCE.getName(resourceTypeName), relationType.getName());
+        //Implicit Names
+        TypeLabel hasResourceOwnerLabel = Schema.ImplicitType.HAS_OWNER.getLabel(resourceTypeLabel);
+        TypeLabel hasResourceValueLabel = Schema.ImplicitType.HAS_VALUE.getLabel(resourceTypeLabel);
+        TypeLabel hasResourceLabel = Schema.ImplicitType.HAS.getLabel(resourceTypeLabel);
 
-        Set<TypeName> roleNames = relationType.hasRoles().stream().map(Type::getName).collect(toSet());
-        assertEquals(2, roleNames.size());
+        entityType.resource(resourceType);
 
-        assertTrue(roleNames.contains(Schema.Resource.HAS_RESOURCE_OWNER.getName(resourceTypeName)));
-        assertTrue(roleNames.contains(Schema.Resource.HAS_RESOURCE_VALUE.getName(resourceTypeName)));
+        RelationType relationType = graknGraph.getRelationType(hasResourceLabel.getValue());
+        assertEquals(hasResourceLabel, relationType.getLabel());
 
-        graknGraph.showImplicitConcepts(true);
+        Set<TypeLabel> roleLabels = relationType.relates().stream().map(Type::getLabel).collect(toSet());
+        assertThat(roleLabels, containsInAnyOrder(hasResourceOwnerLabel, hasResourceValueLabel));
 
-        assertEquals(Schema.Resource.HAS_RESOURCE_OWNER.getName(resourceTypeName), entityType.playsRoles().iterator().next().getName());
-        assertEquals(Schema.Resource.HAS_RESOURCE_VALUE.getName(resourceTypeName), resourceType.playsRoles().iterator().next().getName());
+        assertThat(entityType.plays(), containsInAnyOrder(graknGraph.getRoleType(hasResourceOwnerLabel.getValue())));
+        assertThat(resourceType.plays(), containsInAnyOrder(graknGraph.getRoleType(hasResourceValueLabel.getValue())));
 
         //Check everything is implicit
         assertTrue(relationType.isImplicit());
-        relationType.hasRoles().forEach(role -> assertTrue(role.isImplicit()));
+        relationType.relates().forEach(role -> assertTrue(role.isImplicit()));
 
         // Check that resource is not required
-        EdgeImpl entityPlays = ((EntityTypeImpl) entityType).getEdgesOfType(Direction.OUT, Schema.EdgeLabel.PLAYS_ROLE).iterator().next();
+        EdgeImpl entityPlays = ((EntityTypeImpl) entityType).getEdgesOfType(Direction.OUT, Schema.EdgeLabel.PLAYS).iterator().next();
         assertFalse(entityPlays.getPropertyBoolean(Schema.EdgeProperty.REQUIRED));
-        EdgeImpl resourcePlays = ((ResourceTypeImpl <?>) resourceType).getEdgesOfType(Direction.OUT, Schema.EdgeLabel.PLAYS_ROLE).iterator().next();
+        EdgeImpl resourcePlays = ((ResourceTypeImpl <?>) resourceType).getEdgesOfType(Direction.OUT, Schema.EdgeLabel.PLAYS).iterator().next();
         assertFalse(resourcePlays.getPropertyBoolean(Schema.EdgeProperty.REQUIRED));
     }
 
     @Test
-    public void testHasResourceFollowsSubStructure(){
+    public void whenAddingResourcesWithSubTypesToEntityTypes_EnsureImplicitStructureFollowsSubTypes(){
         EntityType entityType1 = graknGraph.putEntityType("Entity Type 1");
         EntityType entityType2 = graknGraph.putEntityType("Entity Type 2");
 
-        TypeName superName = TypeName.of("Super Resource Type");
-        TypeName name = TypeName.of("Resource Type");
+        TypeLabel superLabel = TypeLabel.of("Super Resource Type");
+        TypeLabel label = TypeLabel.of("Resource Type");
 
-        ResourceType rtSuper = graknGraph.putResourceType(superName, ResourceType.DataType.STRING);
-        ResourceType rt = graknGraph.putResourceType(name, ResourceType.DataType.STRING).superType(rtSuper);
+        ResourceType rtSuper = graknGraph.putResourceType(superLabel, ResourceType.DataType.STRING);
+        ResourceType rt = graknGraph.putResourceType(label, ResourceType.DataType.STRING).superType(rtSuper);
 
-        entityType1.hasResource(rtSuper);
-        entityType2.hasResource(rt);
+        entityType1.resource(rtSuper);
+        entityType2.resource(rt);
 
         graknGraph.showImplicitConcepts(true);
 
         //Check role types are only built explicitly
-        assertEquals(1, entityType1.playsRoles().size());
-        assertEquals(entityType1.playsRoles().iterator().next().getName(), Schema.Resource.HAS_RESOURCE_OWNER.getName(superName));
+        assertThat(entityType1.plays(),
+                containsInAnyOrder(graknGraph.getRoleType(Schema.ImplicitType.HAS_OWNER.getLabel(superLabel).getValue())));
 
-        assertEquals(1, entityType2.playsRoles().size());
-        assertEquals(entityType2.playsRoles().iterator().next().getName(), Schema.Resource.HAS_RESOURCE_OWNER.getName(name));
+        assertThat(entityType2.plays(),
+                containsInAnyOrder(graknGraph.getRoleType(Schema.ImplicitType.HAS_OWNER.getLabel(label).getValue())));
 
-        //Check Implicit Types Follow AKO Structure
-        RelationType rtSuperRelation = graknGraph.getType(Schema.Resource.HAS_RESOURCE.getName(rtSuper.getName()));
-        RoleType rtSuperRoleOwner = graknGraph.getType(Schema.Resource.HAS_RESOURCE_OWNER.getName(rtSuper.getName()));
-        RoleType rtSuperRoleValue = graknGraph.getType(Schema.Resource.HAS_RESOURCE_VALUE.getName(rtSuper.getName()));
+        //Check Implicit Types Follow SUB Structure
+        RelationType rtSuperRelation = graknGraph.getType(Schema.ImplicitType.HAS.getLabel(rtSuper.getLabel()));
+        RoleType rtSuperRoleOwner = graknGraph.getType(Schema.ImplicitType.HAS_OWNER.getLabel(rtSuper.getLabel()));
+        RoleType rtSuperRoleValue = graknGraph.getType(Schema.ImplicitType.HAS_VALUE.getLabel(rtSuper.getLabel()));
 
-        RelationType rtRelation = graknGraph.getType(Schema.Resource.HAS_RESOURCE.getName(rt.getName()));
-        RoleType reRoleOwner = graknGraph.getType(Schema.Resource.HAS_RESOURCE_OWNER.getName(rt.getName()));
-        RoleType reRoleValue = graknGraph.getType(Schema.Resource.HAS_RESOURCE_VALUE.getName(rt.getName()));
+        RelationType rtRelation = graknGraph.getType(Schema.ImplicitType.HAS.getLabel(rt.getLabel()));
+        RoleType reRoleOwner = graknGraph.getType(Schema.ImplicitType.HAS_OWNER.getLabel(rt.getLabel()));
+        RoleType reRoleValue = graknGraph.getType(Schema.ImplicitType.HAS_VALUE.getLabel(rt.getLabel()));
 
         assertEquals(rtSuperRoleOwner, reRoleOwner.superType());
         assertEquals(rtSuperRoleValue, reRoleValue.superType());
@@ -437,72 +322,7 @@ public class EntityTypeTest extends GraphTestBase{
     }
 
     @Test
-    public void testKey(){
-        TypeName resourceTypeName = TypeName.of("Resource Type");
-        EntityType entityType = graknGraph.putEntityType("Entity1");
-        ResourceType resourceType = graknGraph.putResourceType("Resource Type", ResourceType.DataType.STRING);
-
-        RelationType relationType = entityType.key(resourceType);
-        assertEquals(Schema.Resource.HAS_RESOURCE.getName(resourceTypeName), relationType.getName());
-
-        Set<TypeName> roleNames = relationType.hasRoles().stream().map(RoleType::getName).collect(toSet());
-        assertEquals(2, roleNames.size());
-
-        assertTrue(roleNames.contains(Schema.Resource.HAS_RESOURCE_OWNER.getName(resourceTypeName)));
-        assertTrue(roleNames.contains(Schema.Resource.HAS_RESOURCE_VALUE.getName(resourceTypeName)));
-
-        graknGraph.showImplicitConcepts(true);
-
-        assertEquals(Schema.Resource.HAS_RESOURCE_OWNER.getName(resourceTypeName), entityType.playsRoles().iterator().next().getName());
-        assertEquals(Schema.Resource.HAS_RESOURCE_VALUE.getName(resourceTypeName), resourceType.playsRoles().iterator().next().getName());
-
-        //Check everything is implicit
-        assertTrue(relationType.isImplicit());
-        relationType.hasRoles().forEach(role -> assertTrue(role.isImplicit()));
-
-        // Check that resource is required
-        EdgeImpl entityPlays = ((EntityTypeImpl) entityType).getEdgesOfType(Direction.OUT, Schema.EdgeLabel.PLAYS_ROLE).iterator().next();
-        assertTrue(entityPlays.getPropertyBoolean(Schema.EdgeProperty.REQUIRED));
-        EdgeImpl resourcePlays = ((ResourceTypeImpl <?>) resourceType).getEdgesOfType(Direction.OUT, Schema.EdgeLabel.PLAYS_ROLE).iterator().next();
-        assertTrue(resourcePlays.getPropertyBoolean(Schema.EdgeProperty.REQUIRED));
-    }
-
-    @Test
-    public void testHasResourceThenKey(){
-        EntityType entityType = graknGraph.putEntityType("Entity1");
-        ResourceType resourceType = graknGraph.putResourceType("Resource Type", ResourceType.DataType.STRING);
-
-        RelationType relationTypeHasResource = entityType.hasResource(resourceType);
-        RelationType relationTypeKey = entityType.key(resourceType);
-
-        assertEquals(relationTypeHasResource, relationTypeKey);
-
-        // Check that resource is required
-        EdgeImpl entityPlays = ((EntityTypeImpl) entityType).getEdgesOfType(Direction.OUT, Schema.EdgeLabel.PLAYS_ROLE).iterator().next();
-        assertTrue(entityPlays.getPropertyBoolean(Schema.EdgeProperty.REQUIRED));
-        EdgeImpl resourcePlays = ((ResourceTypeImpl <?>) resourceType).getEdgesOfType(Direction.OUT, Schema.EdgeLabel.PLAYS_ROLE).iterator().next();
-        assertTrue(resourcePlays.getPropertyBoolean(Schema.EdgeProperty.REQUIRED));
-    }
-
-    @Test
-    public void testKeyThenHasResource(){
-        EntityType entityType = graknGraph.putEntityType("Entity1");
-        ResourceType resourceType = graknGraph.putResourceType("Resource Type", ResourceType.DataType.STRING);
-
-        RelationType relationTypeKey = entityType.key(resourceType);
-        RelationType relationTypeHasResource = entityType.hasResource(resourceType);
-
-        assertEquals(relationTypeHasResource, relationTypeKey);
-
-        // Check that resource is required
-        EdgeImpl entityPlays = ((EntityTypeImpl) entityType).getEdgesOfType(Direction.OUT, Schema.EdgeLabel.PLAYS_ROLE).iterator().next();
-        assertTrue(entityPlays.getPropertyBoolean(Schema.EdgeProperty.REQUIRED));
-        EdgeImpl resourcePlays = ((ResourceTypeImpl <?>) resourceType).getEdgesOfType(Direction.OUT, Schema.EdgeLabel.PLAYS_ROLE).iterator().next();
-        assertTrue(resourcePlays.getPropertyBoolean(Schema.EdgeProperty.REQUIRED));
-    }
-
-    @Test
-    public void testDeleteTypeWithEntities(){
+    public void whenDeletingTypeWithEntities_Throw(){
         EntityType entityTypeA = graknGraph.putEntityType("entityTypeA");
         EntityType entityTypeB = graknGraph.putEntityType("entityTypeB");
 
@@ -512,25 +332,13 @@ public class EntityTypeTest extends GraphTestBase{
         assertNull(graknGraph.getEntityType("entityTypeA"));
 
         expectedException.expect(ConceptException.class);
-        expectedException.expectMessage(CANNOT_DELETE.getMessage(entityTypeB.getName()));
+        expectedException.expectMessage(CANNOT_DELETE.getMessage(entityTypeB.getLabel()));
 
         entityTypeB.delete();
     }
 
     @Test
-    public void testSubType(){
-        EntityType entityTypeA = graknGraph.putEntityType("entityTypeA");
-        EntityType entityTypeB = graknGraph.putEntityType("entityTypeB");
-        EntityType entityTypeC = graknGraph.putEntityType("entityTypeC");
-        assertEquals(1, entityTypeA.subTypes().size());
-        entityTypeA.subType(entityTypeB).subType(entityTypeC);
-        assertEquals(3, entityTypeA.subTypes().size());
-        assertTrue(entityTypeA.subTypes().contains(entityTypeB));
-        assertTrue(entityTypeA.subTypes().contains(entityTypeC));
-    }
-
-    @Test
-    public void testChangingSuperTypeBackToMetaType(){
+    public void whenChangingSuperTypeBackToMetaType_EnsureTypeIsResetToMeta(){
         EntityType entityTypeA = graknGraph.putEntityType("entityTypeA");
         EntityType entityTypeB = graknGraph.putEntityType("entityTypeB").superType(entityTypeA);
         assertEquals(entityTypeA, entityTypeB.superType());
@@ -573,10 +381,96 @@ public class EntityTypeTest extends GraphTestBase{
         ResourceType r3 = graknGraph.putResourceType("r3", ResourceType.DataType.BOOLEAN);
 
         assertTrue("Entity is linked to resources when it shouldn't", e1.resources().isEmpty());
-        e1.hasResource(r1);
-        e1.hasResource(r2);
-        e1.hasResource(r3);
+        e1.resource(r1);
+        e1.resource(r2);
+        e1.resource(r3);
         assertThat(e1.resources(), containsInAnyOrder(r1, r2, r3));
+    }
+
+    @Test
+    public void addResourceTypeAsKeyToOneEntityTypeAndAsResourceToAnotherEntityType(){
+        ResourceType<String> resourceType1 = graknGraph.putResourceType("Shared Resource 1", ResourceType.DataType.STRING);
+        ResourceType<String> resourceType2 = graknGraph.putResourceType("Shared Resource 2", ResourceType.DataType.STRING);
+
+        EntityType entityType1 = graknGraph.putEntityType("EntityType 1");
+        EntityType entityType2 = graknGraph.putEntityType("EntityType 2");
+
+        assertThat(entityType1.keys(), is(empty()));
+        assertThat(entityType1.resources(), is(empty()));
+        assertThat(entityType2.keys(), is(empty()));
+        assertThat(entityType2.resources(), is(empty()));
+
+        //Link the resources
+        entityType1.resource(resourceType1);
+
+        entityType1.key(resourceType2);
+        entityType2.key(resourceType1);
+        entityType2.key(resourceType2);
+
+        assertThat(entityType1.resources(), containsInAnyOrder(resourceType1, resourceType2));
+        assertThat(entityType2.resources(), containsInAnyOrder(resourceType1, resourceType2));
+
+        assertThat(entityType1.keys(), containsInAnyOrder(resourceType2));
+        assertThat(entityType2.keys(), containsInAnyOrder(resourceType1, resourceType2));
+
+        //Add resource which is a key for one entity and a resource for another
+        Entity entity1 = entityType1.addEntity();
+        Entity entity2 = entityType2.addEntity();
+        Resource<String> resource1 = resourceType1.putResource("Test 1");
+        Resource<String> resource2 = resourceType2.putResource("Test 2");
+        Resource<String> resource3 = resourceType2.putResource("Test 3");
+
+        //Resource 1 is a key to one and a resource to another
+        entity1.resource(resource1);
+        entity2.resource(resource1);
+
+        entity1.resource(resource2);
+        entity2.resource(resource3);
+
+        graknGraph.commit();
+    }
+
+    @Test
+    public void whenAddingResourceTypeAsKeyAfterResource_Throw(){
+        ResourceType<String> resourceType = graknGraph.putResourceType("Shared Resource", ResourceType.DataType.STRING);
+        EntityType entityType = graknGraph.putEntityType("EntityType");
+
+        entityType.resource(resourceType);
+
+        expectedException.expect(ConceptException.class);
+        expectedException.expectMessage(CANNOT_BE_KEY_AND_RESOURCE.getMessage(entityType.getLabel(), resourceType.getLabel()));
+
+        entityType.key(resourceType);
+    }
+
+    @Test
+    public void whenAddingResourceTypeAsResourceAfterResource_Throw(){
+        ResourceType<String> resourceType = graknGraph.putResourceType("Shared Resource", ResourceType.DataType.STRING);
+        EntityType entityType = graknGraph.putEntityType("EntityType");
+
+        entityType.key(resourceType);
+
+        expectedException.expect(ConceptException.class);
+        expectedException.expectMessage(CANNOT_BE_KEY_AND_RESOURCE.getMessage(entityType.getLabel(), resourceType.getLabel()));
+
+        entityType.resource(resourceType);
+    }
+
+    @Test
+    public void whenCreatingEntityType_EnsureItHasAShard(){
+        EntityTypeImpl entityType = (EntityTypeImpl) graknGraph.putEntityType("EntityType");
+        assertThat(entityType.shards(), not(empty()));
+        assertEquals(entityType.shards().iterator().next(), entityType.currentShard());
+    }
+
+    @Test
+    public void whenAddingInstanceToType_EnsureIsaEdgeIsPlacedOnShard(){
+        EntityTypeImpl entityType = (EntityTypeImpl) graknGraph.putEntityType("EntityType");
+        EntityTypeImpl shard = (EntityTypeImpl) entityType.currentShard();
+        Entity e1 = entityType.addEntity();
+
+        assertFalse("The isa edge was places on the type rather than the shard", entityType.getIncomingNeighbours(Schema.EdgeLabel.ISA).iterator().hasNext());
+        assertEquals(e1, shard.getIncomingNeighbours(Schema.EdgeLabel.ISA).findAny().get());
     }
 
 }

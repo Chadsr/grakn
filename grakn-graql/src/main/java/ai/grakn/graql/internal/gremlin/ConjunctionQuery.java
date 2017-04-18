@@ -18,12 +18,13 @@
 
 package ai.grakn.graql.internal.gremlin;
 
-import ai.grakn.concept.TypeName;
+import ai.grakn.GraknGraph;
+import ai.grakn.concept.TypeLabel;
 import ai.grakn.graql.VarName;
 import ai.grakn.graql.admin.Conjunction;
 import ai.grakn.graql.admin.VarAdmin;
 import ai.grakn.graql.internal.gremlin.fragment.Fragment;
-import ai.grakn.graql.internal.gremlin.fragment.Fragments;
+import ai.grakn.graql.internal.gremlin.sets.EquivalentFragmentSets;
 import ai.grakn.graql.internal.pattern.property.VarPropertyInternal;
 import ai.grakn.util.ErrorMessage;
 import com.google.common.collect.Collections2;
@@ -62,11 +63,11 @@ class ConjunctionQuery {
     /**
      * @param patternConjunction a pattern containing no disjunctions to find in the graph
      */
-    ConjunctionQuery(Conjunction<VarAdmin> patternConjunction) {
+    ConjunctionQuery(Conjunction<VarAdmin> patternConjunction, GraknGraph graph) {
         vars = patternConjunction.getPatterns();
 
         if (vars.size() == 0) {
-            throw new IllegalArgumentException(ErrorMessage.MATCH_NO_PATTERNS.getMessage());
+            throw new IllegalArgumentException(ErrorMessage.NO_PATTERNS.getMessage());
         }
 
         ImmutableSet<EquivalentFragmentSet> fragmentSets =
@@ -74,26 +75,30 @@ class ConjunctionQuery {
 
         // Get all variable names mentioned in non-starting fragments
         Set<VarName> names = fragmentSets.stream()
-                .flatMap(EquivalentFragmentSet::getFragments)
+                .flatMap(EquivalentFragmentSet::stream)
                 .filter(fragment -> !fragment.isStartingFragment())
-                .flatMap(Fragment::getVariableNames)
+                .flatMap(fragment -> fragment.getVariableNames().stream())
                 .collect(toImmutableSet());
 
         // Get all dependencies fragments have on certain variables existing
         Set<VarName> dependencies = fragmentSets.stream()
-                .flatMap(EquivalentFragmentSet::getFragments)
+                .flatMap(EquivalentFragmentSet::stream)
                 .flatMap(fragment -> fragment.getDependencies().stream())
                 .collect(toImmutableSet());
 
         Set<VarName> validNames = Sets.difference(names, dependencies);
 
         // Filter out any non-essential starting fragments (because other fragments refer to their starting variable)
-        this.equivalentFragmentSets = fragmentSets.stream()
-                .filter(set -> set.getFragments().anyMatch(
+        Set<EquivalentFragmentSet> initialEquivalentFragmentSets = fragmentSets.stream()
+                .filter(set -> set.stream().anyMatch(
                         fragment -> !fragment.isStartingFragment() || !validNames.contains(fragment.getStart())
                 ))
-                .collect(toImmutableSet());
+                .collect(toSet());
 
+        // Apply final optimisations
+        EquivalentFragmentSets.optimiseFragmentSets(initialEquivalentFragmentSets, graph);
+
+        this.equivalentFragmentSets = ImmutableSet.copyOf(initialEquivalentFragmentSets);
     }
 
     ImmutableSet<EquivalentFragmentSet> getEquivalentFragmentSets() {
@@ -111,7 +116,7 @@ class ConjunctionQuery {
     private static Stream<List<Fragment>> cartesianProduct(List<EquivalentFragmentSet> fragmentSets) {
         // Get fragments in each set
         List<Set<Fragment>> fragments = fragmentSets.stream()
-                .map(set -> set.getFragments().collect(toSet()))
+                .map(EquivalentFragmentSet::fragments)
                 .collect(toList());
         return Sets.cartesianProduct(fragments).stream();
     }
@@ -119,10 +124,10 @@ class ConjunctionQuery {
     /**
      * @return a stream of concept names mentioned in the query
      */
-    Stream<TypeName> getTypes() {
+    Stream<TypeLabel> getTypes() {
         return vars.stream()
                 .flatMap(v -> v.getInnerVars().stream())
-                .flatMap(v -> v.getTypeNames().stream());
+                .flatMap(v -> v.getTypeLabels().stream());
     }
 
     private static Stream<EquivalentFragmentSet> equivalentFragmentSetsRecursive(VarAdmin var) {
@@ -153,8 +158,8 @@ class ConjunctionQuery {
         } else if (!traversals.isEmpty()) {
             return traversals.stream();
         } else {
-            // If this variable has no properties, only confirm that it is not a casting and nothing else.
-            return Stream.of(EquivalentFragmentSet.create(Fragments.notCasting(start)));
+            // If this variable has no properties, only confirm that it is not internal and nothing else.
+            return Stream.of(EquivalentFragmentSets.notInternalFragmentSet(start));
         }
     }
 

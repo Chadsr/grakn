@@ -81,17 +81,11 @@ public class TaskState implements Serializable {
     /**
      * Used to store a task checkpoint allowing it to resume from the same point of execution as at the time of the checkpoint.
      */
-    private String taskCheckpoint;
+    private TaskCheckpoint taskCheckpoint;
     /**
      * Configuration passed to the task on startup, can contain data/location of data for task to process, etc.
      */
     private Json configuration;
-
-    public static TaskState of(TaskId id) {
-        // TODO: Figure out a nicer way than all these nulls...
-        // This method is necessary in order to stop tasks that haven't been added to storage yet
-        return new TaskState(null, null, null, null, id);
-    }
 
     public static TaskState of(Class<?> taskClass, String creator, TaskSchedule schedule, Json configuration) {
         return of(taskClass, creator, schedule, configuration, TaskId.generate());
@@ -134,24 +128,38 @@ public class TaskState implements Serializable {
         this.status = RUNNING;
         this.engineID = engineID;
         this.statusChangeTime = now();
+
         return this;
     }
 
     public TaskState markCompleted(){
         this.status = COMPLETED;
         this.statusChangeTime = now();
+
+        // Clearing out any not relevant information
+        removeConfigUnlessRecurring();
+
+        this.taskCheckpoint = null;
+
         return this;
     }
 
     public TaskState markScheduled(){
         this.status = SCHEDULED;
         this.statusChangeTime = now();
+
+        removeConfigUnlessRecurring();
+
         return this;
     }
 
     public TaskState markStopped(){
         this.status = STOPPED;
         this.statusChangeTime = now();
+
+        // Clearing out any not relevant information
+        removeConfig();
+
         return this;
     }
 
@@ -160,6 +168,10 @@ public class TaskState implements Serializable {
         this.exception = exception.getClass().getName();
         this.stackTrace = getFullStackTrace(exception);
         this.statusChangeTime = now();
+
+        // We want to keep the configuration and checkpoint here
+        // It's useful to debug failed states
+
         return this;
     }
 
@@ -204,22 +216,27 @@ public class TaskState implements Serializable {
         return exception;
     }
 
-    public TaskState checkpoint(String taskCheckpoint) {
+    public TaskState checkpoint(TaskCheckpoint taskCheckpoint) {
         this.taskCheckpoint = taskCheckpoint;
         return this;
     }
 
-    public String checkpoint() {
+    public TaskCheckpoint checkpoint() {
         return taskCheckpoint;
-    }
-
-    public TaskState clearConfiguration() {
-        this.configuration = null;
-        return this;
     }
 
     public @Nullable Json configuration() {
         return configuration;
+    }
+
+    private void removeConfig(){
+        this.configuration = null;
+    }
+
+    private void removeConfigUnlessRecurring(){
+        if(!schedule.isRecurring()) {
+            removeConfig();
+        }
     }
 
     public TaskState copy() {

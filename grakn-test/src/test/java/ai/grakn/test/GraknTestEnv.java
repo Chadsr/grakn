@@ -1,11 +1,16 @@
 package ai.grakn.test;
 
 import ai.grakn.GraknGraph;
+import ai.grakn.GraknTxType;
 import ai.grakn.engine.GraknEngineConfig;
 import ai.grakn.engine.GraknEngineServer;
-import ai.grakn.engine.postprocessing.EngineCache;
+import ai.grakn.engine.cache.EngineCacheProvider;
+import ai.grakn.engine.tasks.manager.StandaloneTaskManager;
+import ai.grakn.engine.tasks.manager.singlequeue.SingleQueueTaskRunner;
 import ai.grakn.factory.EngineGraknGraphFactory;
 import ai.grakn.factory.SystemKeyspace;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
 import com.jayway.restassured.RestAssured;
 import info.batey.kafka.unit.KafkaUnit;
 import org.slf4j.LoggerFactory;
@@ -14,7 +19,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static ai.grakn.engine.tasks.config.KafkaTerms.NEW_TASKS_TOPIC;
+import static ai.grakn.engine.tasks.config.KafkaTerms.HIGH_PRIORITY_TASKS_TOPIC;
+import static ai.grakn.engine.tasks.config.KafkaTerms.LOW_PRIORITY_TASKS_TOPIC;
 import static ai.grakn.graql.Graql.var;
 
 /**
@@ -82,7 +88,8 @@ public abstract class GraknTestEnv {
 
             kafkaUnit.setKafkaBrokerConfig("log.cleaner.enable", "false");
             kafkaUnit.startup();
-            kafkaUnit.createTopic(NEW_TASKS_TOPIC, properties.getAvailableThreads() * 4);
+            kafkaUnit.createTopic(HIGH_PRIORITY_TASKS_TOPIC, properties.getAvailableThreads() * 2);
+            kafkaUnit.createTopic(LOW_PRIORITY_TASKS_TOPIC, properties.getAvailableThreads() * 2);
 
             LOG.info("kafka started.");
         }
@@ -107,19 +114,19 @@ public abstract class GraknTestEnv {
         // There is no way to stop the embedded Casssandra, no such API offered.
     }
 
-    static void clearGraphs() {
+    private static void clearGraphs() {
         // Drop all keyspaces
         EngineGraknGraphFactory engineGraknGraphFactory = EngineGraknGraphFactory.getInstance();
 
-        GraknGraph systemGraph = engineGraknGraphFactory.getGraph(SystemKeyspace.SYSTEM_GRAPH_NAME);
-        systemGraph.graql().match(var("x").isa("keyspace-name"))
-                .execute()
-                .forEach(x -> x.values().forEach(y -> {
-                    String name = y.asResource().getValue().toString();
-                    GraknGraph graph = engineGraknGraphFactory.getGraph(name);
-                    graph.admin().clear(EngineCache.getInstance());
-                }));
-
+        try(GraknGraph systemGraph = engineGraknGraphFactory.getGraph(SystemKeyspace.SYSTEM_GRAPH_NAME, GraknTxType.WRITE)) {
+            systemGraph.graql().match(var("x").isa("keyspace-name"))
+                    .execute()
+                    .forEach(x -> x.values().forEach(y -> {
+                        String name = y.asResource().getValue().toString();
+                        GraknGraph graph = engineGraknGraphFactory.getGraph(name, GraknTxType.WRITE);
+                        graph.admin().clear(EngineCacheProvider.getCache());
+                    }));
+        }
         engineGraknGraphFactory.refreshConnections();
     }
 
@@ -138,7 +145,7 @@ public abstract class GraknTestEnv {
         }
     }
 
-    static String randomKeyspace(){
+    public static String randomKeyspace(){
         // Embedded Casandra has problems dropping keyspaces that start with a number
         return "a"+ UUID.randomUUID().toString().replaceAll("-", "");
     }

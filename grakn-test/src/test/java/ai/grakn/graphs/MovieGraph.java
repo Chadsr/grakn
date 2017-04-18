@@ -21,6 +21,7 @@ package ai.grakn.graphs;
 import ai.grakn.GraknGraph;
 import ai.grakn.concept.EntityType;
 import ai.grakn.concept.Instance;
+import ai.grakn.concept.Relation;
 import ai.grakn.concept.RelationType;
 import ai.grakn.concept.ResourceType;
 import ai.grakn.concept.RoleType;
@@ -69,23 +70,23 @@ public class MovieGraph extends TestGraph {
         productionBeingDirected = graph.putRoleType("production-being-directed");
         director = graph.putRoleType("director");
         directedBy = graph.putRelationType("directed-by")
-                .hasRole(productionBeingDirected).hasRole(director);
+                .relates(productionBeingDirected).relates(director);
 
         productionWithCast = graph.putRoleType("production-with-cast");
         actor = graph.putRoleType("actor");
         characterBeingPlayed = graph.putRoleType("character-being-played");
         hasCast = graph.putRelationType("has-cast")
-                .hasRole(productionWithCast).hasRole(actor).hasRole(characterBeingPlayed);
+                .relates(productionWithCast).relates(actor).relates(characterBeingPlayed);
 
         genreOfProduction = graph.putRoleType("genre-of-production");
         productionWithGenre = graph.putRoleType("production-with-genre");
         hasGenre = graph.putRelationType("has-genre")
-                .hasRole(genreOfProduction).hasRole(productionWithGenre);
+                .relates(genreOfProduction).relates(productionWithGenre);
 
         clusterOfProduction = graph.putRoleType("cluster-of-production");
         productionWithCluster = graph.putRoleType("production-with-cluster");
         hasCluster = graph.putRelationType("has-cluster")
-                .hasRole(clusterOfProduction).hasRole(productionWithCluster);
+                .relates(clusterOfProduction).relates(productionWithCluster);
 
         title = graph.putResourceType("title", ResourceType.DataType.STRING);
         tmdbVoteCount = graph.putResourceType("tmdb-vote-count", ResourceType.DataType.LONG);
@@ -97,42 +98,41 @@ public class MovieGraph extends TestGraph {
         name = graph.putResourceType("name", ResourceType.DataType.STRING);
 
         production = graph.putEntityType("production")
-                .playsRole(productionWithCluster).playsRole(productionBeingDirected).playsRole(productionWithCast)
-                .playsRole(productionWithGenre);
+                .plays(productionWithCluster).plays(productionBeingDirected).plays(productionWithCast)
+                .plays(productionWithGenre);
 
-        production.hasResource(title);
-        production.hasResource(tmdbVoteCount);
-        production.hasResource(tmdbVoteAverage);
-        production.hasResource(releaseDate);
-        production.hasResource(runtime);
+        production.resource(title);
+        production.resource(tmdbVoteCount);
+        production.resource(tmdbVoteAverage);
+        production.resource(releaseDate);
+        production.resource(runtime);
 
         movie = graph.putEntityType("movie").superType(production);
 
         graph.putEntityType("tv-show").superType(production);
 
         person = graph.putEntityType("person")
-                .playsRole(director).playsRole(actor).playsRole(characterBeingPlayed);
+                .plays(director).plays(actor).plays(characterBeingPlayed);
 
-        person.hasResource(gender);
-        person.hasResource(name);
-        person.hasResource(realName);
+        person.resource(gender);
+        person.resource(name);
+        person.resource(realName);
 
-        genre = graph.putEntityType("genre").playsRole(genreOfProduction);
-
+        genre = graph.putEntityType("genre").plays(genreOfProduction);
         genre.key(name);
 
         character = graph.putEntityType("character")
-                .playsRole(characterBeingPlayed);
+                .plays(characterBeingPlayed);
 
-        character.hasResource(name);
+        character.resource(name);
 
         graph.putEntityType("award");
         language = graph.putEntityType("language");
 
-        language.hasResource(name);
+        language.resource(name);
 
-        cluster = graph.putEntityType("cluster").playsRole(clusterOfProduction);
-        cluster.hasResource(name);
+        cluster = graph.putEntityType("cluster").plays(clusterOfProduction);
+        cluster.resource(name);
     }
 
     @Override
@@ -241,8 +241,8 @@ public class MovieGraph extends TestGraph {
     @Override
     protected void buildRelations(GraknGraph graph) {
         directedBy.addRelation()
-                .putRolePlayer(productionBeingDirected, chineseCoffee)
-                .putRolePlayer(director, alPacino);
+                .addRolePlayer(productionBeingDirected, chineseCoffee)
+                .addRolePlayer(director, alPacino);
 
         hasCast(godfather, marlonBrando, donVitoCorleone);
         hasCast(godfather, alPacino, michaelCorleone);
@@ -276,51 +276,47 @@ public class MovieGraph extends TestGraph {
         hasGenre(spy, musical);
         hasGenre(chineseCoffee, drama);
 
-        hasCluster(godfather, cluster0);
-        hasCluster(apocalypseNow, cluster0);
-        hasCluster(heat, cluster0);
-        hasCluster(theMuppets, cluster1);
-        hasCluster(hocusPocus, cluster1);
+        hasCluster(cluster0, godfather, apocalypseNow, heat);
+        hasCluster(cluster1, theMuppets, hocusPocus);
     }
 
     @Override
     protected void buildRules(GraknGraph graph) {
         // These rules are totally made up for testing purposes and don't work!
         aRuleType = graph.putRuleType("a-rule-type");
-        aRuleType.hasResource(name);
+        aRuleType.resource(name);
 
         Pattern lhs = graph.graql().parsePattern("$x id 'expect-lhs'");
         Pattern rhs = graph.graql().parsePattern("$x id 'expect-rhs'");
 
-        Rule expectation = aRuleType.addRule(lhs, rhs)
-                .addConclusion(movie).addHypothesis(person);
+        Rule expectation = aRuleType.putRule(lhs, rhs);
 
         putResource(expectation, name, "expectation-rule");
 
         lhs = graph.graql().parsePattern("$x id 'materialize-lhs'");
         rhs = graph.graql().parsePattern("$x id 'materialize-rhs'");
-        Rule materialize = aRuleType.addRule(lhs, rhs)
-                .addConclusion(person).addConclusion(genre).addHypothesis(hasCast);
+        Rule materialize = aRuleType.putRule(lhs, rhs);
 
         putResource(materialize, name, "materialize-rule");
     }
 
     private static void hasCast(Instance movie, Instance person, Instance character) {
         hasCast.addRelation()
-                .putRolePlayer(productionWithCast, movie)
-                .putRolePlayer(actor, person)
-                .putRolePlayer(characterBeingPlayed, character);
+                .addRolePlayer(productionWithCast, movie)
+                .addRolePlayer(actor, person)
+                .addRolePlayer(characterBeingPlayed, character);
     }
 
     private static void hasGenre(Instance movie, Instance genre) {
         hasGenre.addRelation()
-                .putRolePlayer(productionWithGenre, movie)
-                .putRolePlayer(genreOfProduction, genre);
+                .addRolePlayer(productionWithGenre, movie)
+                .addRolePlayer(genreOfProduction, genre);
     }
 
-    private static void hasCluster(Instance movie, Instance cluster) {
-        hasCluster.addRelation()
-                .putRolePlayer(productionWithCluster, movie)
-                .putRolePlayer(clusterOfProduction, cluster);
+    private static void hasCluster(Instance cluster, Instance... movies) {
+        Relation relation = hasCluster.addRelation().addRolePlayer(clusterOfProduction, cluster);
+        for (Instance movie : movies) {
+            relation.addRolePlayer(productionWithCluster, movie);
+        }
     }
 }

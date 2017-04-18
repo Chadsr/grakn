@@ -104,19 +104,19 @@ public class TaskStateZookeeperStore implements TaskStateStorage {
             // Get the previously stored task
             TaskState previousTask = (TaskState) deserialize(zookeeper.connection().getData().forPath(taskPath(task)));
 
-                // Start a transaction to write the current serialized task
-                CuratorTransactionBridge transaction = zookeeper.connection().inTransaction()
-                        .setData().forPath(taskPath(task), serialize(task));
+            // Start a transaction to write the current serialized task
+            CuratorTransactionBridge transaction = zookeeper.connection().inTransaction()
+                    .setData().forPath(taskPath(task), serialize(task));
 
-                EngineID currentEngineId = task.engineID();
-                EngineID previousEngineId = previousTask.engineID();
+            EngineID currentEngineId = task.engineID();
+            EngineID previousEngineId = previousTask.engineID();
 
-                registerTaskIsExecutingOnEngine(transaction, previousEngineId, currentEngineId, task);
+            registerTaskIsExecutingOnEngine(transaction, previousEngineId, currentEngineId, task);
 
-                // Execute transaction
-                transaction.and().commit();
+            // Execute transaction
+            transaction.and().commit();
 
-                return true;
+            return true;
         } catch (Exception e){
             throw new EngineStorageException(e);
         }
@@ -207,6 +207,7 @@ public class TaskStateZookeeperStore implements TaskStateStorage {
         if (current != null) {
 
             // Ensure there is a path for the current engine
+            //TODO Dont use the exception here
             try {
                 zookeeper.connection().create().creatingParentContainersIfNeeded().forPath(enginePath(current));
             } catch (KeeperException.NodeExistsException e){

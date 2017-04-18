@@ -50,40 +50,40 @@ public class AbstractGraph extends TestGraph {
 
         relRoleA = graph.putRoleType("rel-roleA");
         relRoleB = graph.putRoleType("rel-roleB");
-        rel = graph.putRelationType("rel").hasRole(relRoleA).hasRole(relRoleB);
+        rel = graph.putRelationType("rel").relates(relRoleA).relates(relRoleB);
 
         RELRoleA = graph.putRoleType("REL-roleA");
         RELRoleB = graph.putRoleType("REL-roleB");
-        REL = graph.putRelationType("REL").hasRole(RELRoleA).hasRole(RELRoleB);
+        REL = graph.putRelationType("REL").relates(RELRoleA).relates(RELRoleB);
 
-        P = graph.putEntityType("P").playsRole(RELRoleA).playsRole(RELRoleB);
-        P.hasResource(key);
-        Q = graph.putEntityType("Q").playsRole(RELRoleB).playsRole(RELRoleA);
-        p = graph.putEntityType("p").playsRole(relRoleA).playsRole(RELRoleA);
-        q = graph.putEntityType("q").playsRole(relRoleB).playsRole(RELRoleB);
-        r = graph.putEntityType("r").playsRole(relRoleA).playsRole(RELRoleA);
-        s = graph.putEntityType("s").playsRole(relRoleB).playsRole(RELRoleB);
-        u = graph.putEntityType("u").playsRole(relRoleA).playsRole(RELRoleA);
-        u.hasResource(key);
-        t = graph.putEntityType("t").playsRole(relRoleB).playsRole(RELRoleB);
-        t.hasResource(key);
+        P = graph.putEntityType("P").plays(RELRoleA).plays(RELRoleB);
+        P.resource(key);
+        Q = graph.putEntityType("Q").plays(RELRoleB).plays(RELRoleA);
+        p = graph.putEntityType("p").plays(relRoleA).plays(RELRoleA);
+        q = graph.putEntityType("q").plays(relRoleB).plays(RELRoleB);
+        r = graph.putEntityType("r").plays(relRoleA).plays(RELRoleA);
+        s = graph.putEntityType("s").plays(relRoleB).plays(RELRoleB);
+        u = graph.putEntityType("u").plays(relRoleA).plays(RELRoleA);
+        u.resource(key);
+        t = graph.putEntityType("t").plays(relRoleB).plays(RELRoleB);
+        t.resource(key);
     }
 
     @Override
     protected void buildInstances(GraknGraph graph) {
-        instanceU = putEntity(graph, "instanceU", u, key.getName());
-        instanceT = putEntity(graph, "instanceT", t, key.getName());
-        instanceP = putEntity(graph, "instanceP", P, key.getName());
+        instanceU = putEntity(graph, "instanceU", u, key.getLabel());
+        instanceT = putEntity(graph, "instanceT", t, key.getLabel());
+        instanceP = putEntity(graph, "instanceP", P, key.getLabel());
     }
 
     @Override
     protected void  buildRelations(GraknGraph graph) {
         rel.addRelation()
-                .putRolePlayer(relRoleA, instanceU)
-                .putRolePlayer(relRoleB, instanceT);
+                .addRolePlayer(relRoleA, instanceU)
+                .addRolePlayer(relRoleB, instanceT);
         REL.addRelation()
-                .putRolePlayer(RELRoleA, instanceU)
-                .putRolePlayer(RELRoleB, instanceP);
+                .addRolePlayer(RELRoleA, instanceU)
+                .addRolePlayer(RELRoleB, instanceP);
 
     }
     @Override
@@ -92,22 +92,22 @@ public class AbstractGraph extends TestGraph {
 
         Pattern R1_LHS = and(graph.graql().parsePatterns("$x isa p;$y isa q;($x, $y) isa rel;"));
         Pattern R1_RHS = and(graph.graql().parsePatterns("$x isa Q;"));
-        inferenceRule.addRule(R1_LHS, R1_RHS);
+        inferenceRule.putRule(R1_LHS, R1_RHS);
 
         Pattern R2_LHS = and(graph.graql().parsePatterns("$x isa r;"));
         Pattern R2_RHS = and(graph.graql().parsePatterns("$x isa p;"));
-        inferenceRule.addRule(R2_LHS, R2_RHS);
+        inferenceRule.putRule(R2_LHS, R2_RHS);
 
         Pattern R3_LHS = and(graph.graql().parsePatterns("$x isa s;"));
         Pattern R3_RHS = and(graph.graql().parsePatterns("$x isa p;"));
-        inferenceRule.addRule(R3_LHS, R3_RHS);
+        inferenceRule.putRule(R3_LHS, R3_RHS);
 
         Pattern R4_LHS = and(graph.graql().parsePatterns("$x isa t;"));
         Pattern R4_RHS = and(graph.graql().parsePatterns("$x isa q;"));
-        inferenceRule.addRule(R4_LHS, R4_RHS);
+        inferenceRule.putRule(R4_LHS, R4_RHS);
 
         Pattern R5_LHS = and(graph.graql().parsePatterns("$x isa u;"));
         Pattern R5_RHS = and(graph.graql().parsePatterns("$x isa r;"));
-        inferenceRule.addRule(R5_LHS, R5_RHS);
+        inferenceRule.putRule(R5_LHS, R5_RHS);
     }
 }

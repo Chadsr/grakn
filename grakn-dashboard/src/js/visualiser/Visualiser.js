@@ -21,6 +21,10 @@ import _ from 'underscore';
 import vis from 'vis';
 
 import Style from './Style';
+import User from '../User';
+import NodeSettings from '../NodeSettings';
+import * as API from '../util/HALTerms';
+
 
 /*
  * Main class for creating a graph of nodes and edges. See Style class for asthetic customisation.
@@ -30,7 +34,9 @@ import Style from './Style';
  */
 export default class Visualiser {
   constructor() {
-    this.nodes = new vis.DataSet([]);
+    this.nodes = new vis.DataSet([], {
+      queue: { delay: 800 },
+    });
     this.edges = new vis.DataSet([]);
 
     this.callbacks = {};
@@ -64,9 +70,7 @@ export default class Visualiser {
         hoverWidth: 2,
         selectionWidth: 2,
         arrowStrikethrough: false,
-        arrows: {
-          to: true,
-        },
+        arrows: { to: { enabled: true, scaleFactor: 0.7 } },
         smooth: {
           enabled: false,
           forceDirection: 'none',
@@ -78,12 +82,15 @@ export default class Visualiser {
       },
       layout: {
         improvedLayout: false,
+        randomSeed: 10,
       },
     };
 
         // Additional properties to show in node label by type.
     this.displayProperties = {};
     this.alreadyFittedToWindow = false;
+    // Structure to hold colour preferences on nodes
+    this.nodeColourProperies = {};
 
         // working on stopping nodes from moving
     this.lastFixTime = 0; // this is needed to stop a redraw loop due to the update of the vis dataset
@@ -114,7 +121,7 @@ export default class Visualiser {
     }
 
     this.network.on('stabilized', (params) => {
-      if (this.draggingNode === false) {
+      if (this.draggingNode === false && User.getFreezeNodes()) {
         this.fixNodes();
       }
     });
@@ -205,6 +212,13 @@ export default class Visualiser {
 
     //  ----------------------------------------------  //
 
+  fixAllNodes() {
+    this.fixNodes(this.nodes.getIds());
+  }
+
+  releaseAllNodes() {
+    this.releaseNodes(this.nodes.getIds());
+  }
 
     // Methods used to fix and release nodes when one or more are dragged //
 
@@ -224,7 +238,7 @@ export default class Visualiser {
 
   fixSingleNode(nodeId) {
     if (nodeId === undefined) return;
-    this.nodes.update({
+    this.updateNode({
       id: nodeId,
       fixed: {
         x: true,
@@ -235,7 +249,7 @@ export default class Visualiser {
 
   releaseNodes(nodeIds) {
     if (nodeIds === undefined) return;
-    nodeIds.forEach(nodeId => this.nodes.update({
+    nodeIds.forEach(nodeId => this.updateNode({
       id: nodeId,
       fixed: {
         x: false,
@@ -258,7 +272,7 @@ export default class Visualiser {
     /**
      * Add a node to the graph. This can be called at any time *after* render().
      */
-  addNode(href, bp, ap, ls) {
+  addNode(href, bp, ap, ls, cn) {
     if (!this.nodeExists(bp.id)) {
       const colorObj = this.style.getNodeColour(bp.type, bp.baseType);
       const highlightObj = {
@@ -272,7 +286,7 @@ export default class Visualiser {
       this.nodes.add({
         id: bp.id,
         href,
-        label: this.generateLabel(bp.type, ap, bp.label),
+        label: this.generateLabel(bp.type, ap, bp.label, bp.baseType),
         baseLabel: bp.label,
         type: bp.type,
         title: bp.type,
@@ -282,26 +296,43 @@ export default class Visualiser {
         }, highlightObj, hoverObj),
         font: this.style.getNodeFont(bp.type, bp.baseType),
         shape: this.style.getNodeShape(bp.baseType),
+        size: this.style.getNodeSize(bp.baseType),
         selected: false,
-        ontology: bp.ontology,
+        explore: bp.explore,
         properties: ap,
         links: ls,
       });
-    }
-
-    return this;
-  }
-
-  disablePhysicsOnNode(id) {
-    if (this.nodeExists(id)) {
-      this.nodes.update({
-        id,
-        physics: false,
+      this.nodes.flush();
+    } else if (bp.id !== cn && User.getFreezeNodes()) { // If node already in graph and it's not the node clicked by user, unlock it
+      this.updateNode({
+        id: bp.id,
+        fixed: {
+          x: false,
+          y: false,
+        },
       });
     }
+
     return this;
   }
 
+  // Given an array of instances(nodes) refresh all their labels with new resources
+  refreshLabels(instances) {
+    instances.forEach((instance) => {
+      const node = this.getNode(instance.id);
+      this.updateNode({
+        id: node.id,
+        label: this.generateLabel(node.type, node.properties, node.baseLabel, node.baseType),
+      });
+    });
+  }
+
+  updateNodeResources(id, properties) {
+    this.updateNode({
+      id,
+      properties,
+    });
+  }
     /**
      * Add edge between two nodes with @label. This can be called at any time *after* render().
      */
@@ -311,8 +342,11 @@ export default class Visualiser {
         from: fromNode,
         to: toNode,
         label,
-        color: this.style.getEdgeColour(),
-        font: this.style.getEdgeFont(),
+        color: this.style.getEdgeColour(label),
+        font: this.style.getEdgeFont(label),
+        arrows: {
+          to: (label !== 'relates'),
+        },
       });
     }
     return this;
@@ -376,6 +410,106 @@ export default class Visualiser {
     return this;
   }
 
+  setDefaultNodeColour(baseType, nodeType) {
+    const colorObj = this.style.getDefaultNodeColour(nodeType, baseType);
+    const highlightObj = {
+      highlight: Object.assign(colorObj.highlight, {
+        border: colorObj.highlight.background,
+      }),
+    };
+    const hoverObj = {
+      hover: highlightObj.highlight,
+    };
+    this.nodes.get().forEach((v) => {
+      if (v.type === nodeType) {
+        this.updateNode({
+          id: v.id,
+          color: Object.assign(colorObj, {
+            border: colorObj.background,
+          }, highlightObj, hoverObj),
+        });
+      }
+    });
+  }
+
+  setColourOnNodeType(baseType, nodeType, colourString) {
+    if (colourString === undefined) {
+      this.setDefaultNodeColour(baseType, nodeType);
+      const t = (nodeType.length) ? nodeType : baseType;
+      NodeSettings.setNodeColour(t);
+      return;
+    }
+    if (nodeType.length) {
+      NodeSettings.setNodeColour(nodeType, {
+        background: colourString,
+        highlight: {
+          background: colourString,
+        } });
+      this.nodes.get().forEach((v) => {
+        if (v.type === nodeType) {
+          this.updateNode({
+            id: v.id,
+            color: {
+              background: colourString,
+              border: colourString,
+              highlight: {
+                background: colourString,
+                border: colourString,
+              },
+              hover: {
+                background: colourString,
+                border: colourString,
+              },
+            },
+          });
+        }
+      });
+    } else {
+      NodeSettings.setNodeColour(baseType, {
+        background: colourString,
+        highlight: {
+          background: colourString,
+        } });
+      // If it's an ontology node
+      this.nodes.get().forEach((v) => {
+        if (v.baseType === baseType) {
+          this.updateNode({
+            id: v.id,
+            color: {
+              background: colourString,
+              border: colourString,
+              highlight: {
+                background: colourString,
+                border: colourString,
+              },
+              hover: {
+                background: colourString,
+                border: colourString,
+              },
+            },
+          });
+        }
+      });
+    }
+  }
+
+  getNodeOnCoordinates(coordinates) {
+    const canvasX = coordinates.x;
+    const canvasY = coordinates.y;
+
+    const allNodes = this.nodes.get();
+    const arrayLength = allNodes.length;
+    for (let i = 0; i < arrayLength; i++) {
+      const curNode = allNodes[i];
+      const boundingBox = this.network.getBoundingBox(curNode.id);
+      if (canvasX <= boundingBox.right && canvasX >= boundingBox.left && canvasY >= boundingBox.top && canvasY <= boundingBox.bottom) {
+        return curNode.id;
+      }
+    }
+
+    return null;
+  }
+
     /*
     Internal methods
     */
@@ -416,10 +550,16 @@ export default class Visualiser {
     });
   }
 
-  generateLabel(type, properties, label) {
-    if (type in this.displayProperties) {
-      return this.displayProperties[type].reduce((l, x) => {
-        let value = (properties[x] === undefined) ? '' : properties[x].label;
+  generateLabel(type, properties, label, baseType) {
+    if (baseType === API.RELATION || baseType === API.GENERATED_RELATION_TYPE || baseType === API.INFERRED_RELATION_TYPE) return '';
+    if (NodeSettings.getLabelProperties(type).length) {
+      return NodeSettings.getLabelProperties(type).reduce((l, x) => {
+        let value;
+        if (x === 'type') {
+          value = type;
+          return `${(l.length ? `${l}\n` : l) + value}`;
+        }
+        value = (properties[x] === undefined) ? '' : properties[x].label;
         if (value.length > 40) value = `${value.substring(0, 40)}...`;
         return `${(l.length ? `${l}\n` : l) + x}: ${value}`;
       }, '');
@@ -430,13 +570,22 @@ export default class Visualiser {
   updateNodeLabels(type) {
     this.nodes._data = _.mapObject(this.nodes._data, (v, k) => {
       if (v.type === type) {
-        this.nodes.update({
+        this.updateNode({
           id: k,
-          label: this.generateLabel(type, v.properties, v.baseLabel),
+          label: this.generateLabel(type, v.properties, v.baseLabel, v.baseType),
         });
       }
       return v;
     });
+  }
+
+  flushUpdates() {
+    this.nodes.flush();
+  }
+
+  updateNode(obj) {
+    this.nodes.update(obj);
+    this.nodes.flush();
   }
 
 }

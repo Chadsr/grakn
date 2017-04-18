@@ -5,12 +5,12 @@ insert
 #################################################
 
 "entity2" sub entity
-    has-resource index
-    plays-role P-from plays-role P-to
-    plays-role Q1-from plays-role Q1-to
-    plays-role Q2-from plays-role Q2-to
-    plays-role R1-from plays-role R1-to
-    plays-role R2-from plays-role R2-to;
+    has index
+    plays P-from plays P-to
+    plays Q1-from plays Q1-to
+    plays Q2-from plays Q2-to
+    plays R1-from plays R1-to
+    plays R2-from plays R2-to;
 
 "start" sub entity2;
 "end" sub entity2;
@@ -19,23 +19,23 @@ insert
 
 "R1-from" sub role;
 "R1-to" sub role;
-"R1" sub relation, has-role R1-from, has-role R1-to;
+"R1" sub relation, relates R1-from, relates R1-to;
 
 "R2-from" sub role;
 "R2-to" sub role;
-"R2" sub relation, has-role R2-from, has-role R2-to;
+"R2" sub relation, relates R2-from, relates R2-to;
 
 "Q1-from" sub role;
 "Q1-to" sub role;
-"Q1" sub relation, has-role Q1-from, has-role Q1-to;
+"Q1" sub relation, relates Q1-from, relates Q1-to;
 
 "Q2-from" sub role;
 "Q2-to" sub role;
-"Q2" sub relation, has-role Q2-from, has-role Q2-to;
+"Q2" sub relation, relates Q2-from, relates Q2-to;
 
 "P-from" sub role;
 "P-to" sub role;
-"P" sub relation, has-role P-from, has-role P-to;
+"P" sub relation, relates P-from, relates P-to;
 
 "index" sub resource, datatype string;
 
@@ -76,12 +76,6 @@ lhs {
 (Q2-from: $z, Q2-to: $y) isa Q2;},
 rhs {
 (Q2-from: $x, Q2-to: $y) isa Q2;};
-
-isa inference-rule,
-lhs {
-(Q1-from: $x, Q1-to: $y) isa Q1;},
-rhs {
-(P-from: $x, P-to: $y) isa P;};
 
 isa inference-rule,
 lhs {

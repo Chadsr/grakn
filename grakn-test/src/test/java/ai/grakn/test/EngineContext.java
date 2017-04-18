@@ -19,20 +19,19 @@
 package ai.grakn.test;
 
 import ai.grakn.Grakn;
-import ai.grakn.GraknGraphFactory;
+import ai.grakn.GraknSession;
 import ai.grakn.engine.GraknEngineServer;
 import ai.grakn.engine.tasks.TaskManager;
 import ai.grakn.engine.tasks.manager.StandaloneTaskManager;
-import ai.grakn.engine.tasks.manager.multiqueue.MultiQueueTaskManager;
 import ai.grakn.engine.tasks.manager.singlequeue.SingleQueueTaskManager;
+import ai.grakn.engine.tasks.mock.MockBackgroundTask;
 import org.junit.rules.ExternalResource;
 
+import static ai.grakn.engine.util.ExceptionWrapper.noThrow;
 import static ai.grakn.test.GraknTestEnv.randomKeyspace;
 import static ai.grakn.test.GraknTestEnv.startEngine;
 import static ai.grakn.test.GraknTestEnv.startKafka;
 import static ai.grakn.test.GraknTestEnv.stopEngine;
-import static ai.grakn.test.GraknTestEnv.stopKafka;
-import static ai.grakn.engine.tasks.mock.MockBackgroundTask.clearTasks;
 
 /**
  * <p>
@@ -46,32 +45,26 @@ public class EngineContext extends ExternalResource {
     private GraknEngineServer server;
 
     private final boolean startKafka;
-    private final boolean startMultiQueueEngine;
     private final boolean startSingleQueueEngine;
     private final boolean startStandaloneEngine;
     private int port = 4567;
 
-    private EngineContext(boolean startKafka, boolean startMultiQueueEngine, boolean startSingleQueueEngine, boolean startStandaloneEngine){
-        this.startMultiQueueEngine = startMultiQueueEngine;
+    private EngineContext(boolean startKafka, boolean startSingleQueueEngine, boolean startStandaloneEngine){
         this.startSingleQueueEngine = startSingleQueueEngine;
         this.startStandaloneEngine = startStandaloneEngine;
         this.startKafka = startKafka;
     }
 
     public static EngineContext startKafkaServer(){
-        return new EngineContext(true, false, false, false);
-    }
-
-    public static EngineContext startMultiQueueServer(){
-        return new EngineContext(true, true, false, false);
+        return new EngineContext(true, false, false);
     }
 
     public static EngineContext startSingleQueueServer(){
-        return new EngineContext(true, false, true, false);
+        return new EngineContext(true, true, false);
     }
 
     public static EngineContext startInMemoryServer(){
-        return new EngineContext(false, false, false, true);
+        return new EngineContext(false, false, true);
     }
 
     public EngineContext port(int port) {
@@ -87,8 +80,8 @@ public class EngineContext extends ExternalResource {
         return server.getTaskManager();
     }
 
-    public GraknGraphFactory factoryWithNewKeyspace() {
-        return Grakn.factory("localhost:" + port, randomKeyspace());
+    public GraknSession factoryWithNewKeyspace() {
+        return Grakn.session("localhost:" + port, randomKeyspace());
     }
 
     @Override
@@ -101,10 +94,6 @@ public class EngineContext extends ExternalResource {
             server = startEngine(SingleQueueTaskManager.class.getName(), port);
         }
 
-        if (startMultiQueueEngine){
-            server = startEngine(MultiQueueTaskManager.class.getName(), port);
-        }
-
         if (startStandaloneEngine){
             server = startEngine(StandaloneTaskManager.class.getName(), port);
         }
@@ -112,15 +101,15 @@ public class EngineContext extends ExternalResource {
 
     @Override
     public void after() {
-        clearTasks();
+        noThrow(MockBackgroundTask::clearTasks, "Error clearing tasks");
 
         try {
-            if(startMultiQueueEngine | startSingleQueueEngine | startStandaloneEngine){
-                stopEngine(server);
+            if(startSingleQueueEngine | startStandaloneEngine){
+                noThrow(() -> stopEngine(server), "Error closing engine");
             }
 
             if(startKafka){
-                stopKafka();
+                noThrow(GraknTestEnv::stopKafka, "Error stopping kafka");
             }
         } catch (Exception e){
             throw new RuntimeException("Could not shut down ", e);

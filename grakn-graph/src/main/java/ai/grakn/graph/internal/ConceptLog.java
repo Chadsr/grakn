@@ -21,7 +21,7 @@ package ai.grakn.graph.internal;
 import ai.grakn.concept.Concept;
 import ai.grakn.concept.ConceptId;
 import ai.grakn.concept.Type;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -48,7 +48,7 @@ class ConceptLog {
 
     //Caches any concept which has been touched before
     private final Map<ConceptId, ConceptImpl> conceptCache = new HashMap<>();
-    private final Map<TypeName, TypeImpl> typeCache = new HashMap<>();
+    private final Map<TypeLabel, TypeImpl> typeCache = new HashMap<>();
 
     //We Track Modified Concepts For Validation
     private final Set<ConceptImpl> modifiedConcepts = new HashSet<>();
@@ -62,6 +62,9 @@ class ConceptLog {
     //We Track Relations so that we can look them up before they are completely defined and indexed on commit
     private final Map<String, RelationImpl> modifiedRelations = new HashMap<>();
 
+    //We Track the number of instances each type has lost or gained
+    private final Map<TypeLabel, Long> instanceCount = new HashMap<>();
+
 
     ConceptLog(AbstractGraknGraph<?> graknGraph) {
         this.graknGraph = graknGraph;
@@ -70,16 +73,16 @@ class ConceptLog {
     /**
      * A helper method which writes back into the central cache at the end of a transaction.
      *
-     * @param committed true if a commit has occurred
+     * @param isSafe true only if it is safe to copy the cache completely without any checks
      */
-    void writeToCentralCache(boolean committed){
-        //When a commit has occurred all types can be overridden this is because we know they are valid
-        //If a commit has not occurred we can only safely push types to the central cache if no modifications have occurred.
-        if(committed){
+    void writeToCentralCache(boolean isSafe){
+        //When a commit has occurred or a graph is read only all types can be overridden this is because we know they are valid.
+        if(isSafe){
             graknGraph.getCachedOntology().putAll(typeCache);
         }
 
-        //TODO: Fill our cache when not committing
+        //When a commit has not occurred some checks are required
+        //TODO: Fill our cache when not committing and when not read only graph.
     }
 
     /**
@@ -101,7 +104,7 @@ class ConceptLog {
         //Caching of relations in memory so they can be retrieved without needing a commit
         if (concept.isRelation()) {
             RelationImpl relation = (RelationImpl) concept;
-            modifiedRelations.put(RelationImpl.generateNewHash(relation.type(), relation.rolePlayers()), relation);
+            modifiedRelations.put(RelationImpl.generateNewHash(relation.type(), relation.allRolePlayers()), relation);
         }
     }
 
@@ -139,6 +142,14 @@ class ConceptLog {
 
     /**
      *
+     * @return All the types that have gained or lost instances and by how much
+     */
+    Map<TypeLabel, Long> getInstanceCount(){
+        return instanceCount;
+    }
+
+    /**
+     *
      * @param concept The concept to nio longer track
      */
     @SuppressWarnings("SuspiciousMethodCalls")
@@ -148,7 +159,7 @@ class ConceptLog {
         modifiedResources.remove(concept);
         conceptCache.remove(concept.getId());
         if(concept.isType()){
-            typeCache.remove(((TypeImpl) concept).getName());
+            typeCache.remove(((TypeImpl) concept).getLabel());
         }
     }
 
@@ -170,7 +181,7 @@ class ConceptLog {
         conceptCache.put(concept.getId(), concept);
         if(concept.isType()){
             TypeImpl type = (TypeImpl) concept;
-            typeCache.put(type.getName(), type);
+            typeCache.put(type.getLabel(), type);
         }
     }
 
@@ -186,11 +197,11 @@ class ConceptLog {
 
     /**
      *
-     * @param name The name of the type to cache
+     * @param label The label of the type to cache
      * @return true if the concept is cached
      */
-    boolean isTypeCached(TypeName name){
-        return typeCache.containsKey(name);
+    boolean isTypeCached(TypeLabel label){
+        return typeCache.containsKey(label);
     }
 
     /**
@@ -208,12 +219,24 @@ class ConceptLog {
     /**
      * Returns a previously built type
      *
-     * @param name The name of the type
+     * @param label The label of the type
      * @param <X> The type of the type
      * @return The cached type
      */
-    <X extends Type> X getCachedType(TypeName name){
+    <X extends Type> X getCachedType(TypeLabel label){
         //noinspection unchecked
-        return (X) typeCache.get(name);
+        return (X) typeCache.get(label);
+    }
+
+    void addedInstance(TypeLabel name){
+        instanceCount.compute(name, (key, value) -> value == null ? 1 : value + 1);
+        cleanupInstanceCount(name);
+    }
+    void removedInstance(TypeLabel name){
+        instanceCount.compute(name, (key, value) -> value == null ? -1 : value - 1);
+        cleanupInstanceCount(name);
+    }
+    private void cleanupInstanceCount(TypeLabel name){
+        if(instanceCount.get(name) == 0) instanceCount.remove(name);
     }
 }

@@ -69,7 +69,7 @@ public interface RoleType extends Type {
      * @param roleType The RoleType which the instances of this Type are allowed to play.
      * @return The RoleType itself
      */
-    RoleType playsRole(RoleType roleType);
+    RoleType plays(RoleType roleType);
 
     /**
      * Removes the RoleType to prevent instances from playing it
@@ -77,7 +77,40 @@ public interface RoleType extends Type {
      * @param roleType The RoleType which the instances of this Type should no longer be allowed to play.
      * @return The RoleType itself
      */
-    RoleType deletePlaysRole(RoleType roleType);
+    RoleType deletePlays(RoleType roleType);
+
+
+    /**
+     * Classifies the type to a specific scope. This allows you to optionally categorise types.
+     *
+     * @param scope The category of this Type
+     * @return The Type itself.
+     */
+    RoleType scope(Instance scope);
+
+    /**
+     * Delete the scope specified.
+     *
+     * @param scope The Instances that is currently scoping this Type.
+     * @return The Type itself
+     */
+    RoleType deleteScope(Instance scope);
+
+    /**
+     * Creates a RelationType which allows this type and a resource type to be linked in a strictly one-to-one mapping.
+     *
+     * @param resourceType The resource type which instances of this type should be allowed to play.
+     * @return The Type itself.
+     */
+    RoleType key(ResourceType resourceType);
+
+    /**
+     * Creates a RelationType which allows this type and a resource type to be linked.
+     *
+     * @param resourceType The resource type which instances of this type should be allowed to play.
+     * @return The Type itself.
+     */
+    RoleType resource(ResourceType resourceType);
 
     //------------------------------------- Accessors ----------------------------------
     /**

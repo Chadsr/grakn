@@ -27,7 +27,7 @@ import ai.grakn.concept.Resource;
 import ai.grakn.concept.ResourceType;
 import ai.grakn.concept.RoleType;
 import ai.grakn.concept.Type;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 import ai.grakn.exception.ConceptException;
 import ai.grakn.util.ErrorMessage;
 import ai.grakn.util.Schema;
@@ -58,8 +58,18 @@ import java.util.stream.Collectors;
  *           For example {@link ai.grakn.concept.EntityType} or {@link RelationType}
  */
 abstract class InstanceImpl<T extends Instance, V extends Type> extends ConceptImpl<T> implements Instance {
-    private ComponentCache<TypeName> cachedInternalType = new ComponentCache<>(() -> TypeName.of(getProperty(Schema.ConceptProperty.TYPE)));
-    private ComponentCache<V> cachedType = new ComponentCache<>(() -> this.<V>getOutgoingNeighbours(Schema.EdgeLabel.ISA).findFirst().orElse(null));
+    private ComponentCache<TypeLabel> cachedInternalType = new ComponentCache<>(() -> TypeLabel.of(getProperty(Schema.ConceptProperty.TYPE)));
+
+    private ComponentCache<V> cachedType = new ComponentCache<>(() -> {
+        ConceptImpl<?> currentType = (ConceptImpl) this.getOutgoingNeighbours(Schema.EdgeLabel.ISA).findFirst().orElse(null);
+
+        while (currentType.isShard()){
+            currentType = (ConceptImpl) currentType.getOutgoingNeighbours(Schema.EdgeLabel.SHARD).findFirst().orElse(null);
+        }
+
+        //noinspection unchecked
+        return (V) currentType;
+    });
 
     InstanceImpl(AbstractGraknGraph graknGraph, Vertex v) {
         super(graknGraph, v);
@@ -77,15 +87,20 @@ abstract class InstanceImpl<T extends Instance, V extends Type> extends ConceptI
     public void delete() {
         InstanceImpl<?, ?> parent = this;
         Set<CastingImpl> castings = parent.castings();
+        getGraknGraph().getConceptLog().removedInstance(type().getLabel());
         deleteNode();
         for(CastingImpl casting: castings){
             Set<Relation> relations = casting.getRelations();
             getGraknGraph().getConceptLog().trackConceptForValidation(casting);
 
             for(Relation relation : relations) {
-                RelationImpl rel = (RelationImpl) relation;
-                getGraknGraph().getConceptLog().trackConceptForValidation(rel);
-                rel.cleanUp();
+                if(relation.type().isImplicit()){//For now implicit relations die
+                    relation.delete();
+                } else {
+                    RelationImpl rel = (RelationImpl) relation;
+                    getGraknGraph().getConceptLog().trackConceptForValidation(rel);
+                    rel.cleanUp();
+                }
             }
 
             casting.deleteNode();
@@ -108,14 +123,15 @@ abstract class InstanceImpl<T extends Instance, V extends Type> extends ConceptI
         Set<ConceptId> resourceTypesIds = Arrays.stream(resourceTypes).map(Concept::getId).collect(Collectors.toSet());
 
         Set<Resource<?>> resources = new HashSet<>();
-        this.getOutgoingNeighbours(Schema.EdgeLabel.SHORTCUT).forEach(concept -> {
-            if(concept.isResource()) {
+        getShortcutNeighbours().forEach(concept -> {
+            if(concept.isResource() && !equals(concept)) {
                 Resource<?> resource = concept.asResource();
                 if(resourceTypesIds.isEmpty() || resourceTypesIds.contains(resource.type().getId())) {
                     resources.add(resource);
                 }
             }
         });
+
         return resources;
     }
 
@@ -129,6 +145,16 @@ abstract class InstanceImpl<T extends Instance, V extends Type> extends ConceptI
         return castings;
     }
 
+    <X extends Instance> Set<X> getShortcutNeighbours(){
+        Set<X> foundNeighbours = new HashSet<X>();
+        getGraknGraph().getTinkerTraversal().
+                has(Schema.ConceptProperty.ID.name(), getId().getValue()).
+                in(Schema.EdgeLabel.SHORTCUT.getLabel()).
+                out(Schema.EdgeLabel.SHORTCUT.getLabel()).
+                forEachRemaining(vertex -> foundNeighbours.add(getGraknGraph().buildConcept(vertex)));
+        return foundNeighbours;
+    }
+
     /**
      *
      * @param roleTypes An optional parameter which allows you to specify the role of the relations you wish to retrieve.
@@ -137,14 +163,14 @@ abstract class InstanceImpl<T extends Instance, V extends Type> extends ConceptI
     @Override
     public Collection<Relation> relations(RoleType... roleTypes) {
         Set<Relation> relations = new HashSet<>();
-        Set<TypeName> roleTypeNames = Arrays.stream(roleTypes).map(RoleType::getName).collect(Collectors.toSet());
+        Set<TypeLabel> roleTypeLabels = Arrays.stream(roleTypes).map(RoleType::getLabel).collect(Collectors.toSet());
 
         InstanceImpl<?, ?> parent = this;
 
         parent.castings().forEach(c -> {
             CastingImpl casting = c.asCasting();
-            if (roleTypeNames.size() != 0) {
-                if (roleTypeNames.contains(casting.getInternalType())) {
+            if (roleTypeLabels.size() != 0) {
+                if (roleTypeLabels.contains(casting.getInternalType())) {
                     relations.addAll(casting.getRelations());
                 }
             } else {
@@ -160,7 +186,7 @@ abstract class InstanceImpl<T extends Instance, V extends Type> extends ConceptI
      * @return A set of all the Role Types which this instance plays.
      */
     @Override
-    public Collection<RoleType> playsRoles() {
+    public Collection<RoleType> plays() {
         Set<RoleType> roleTypes = new HashSet<>();
         ConceptImpl<?> parent = this;
         parent.getIncomingNeighbours(Schema.EdgeLabel.ROLE_PLAYER).forEach(c -> roleTypes.add(((CastingImpl)c).getRole()));
@@ -171,24 +197,38 @@ abstract class InstanceImpl<T extends Instance, V extends Type> extends ConceptI
     /**
      * Creates a relation from this instance to the provided resource.
      * @param resource The resource to creating a relationship to
-     * @return A relation which contains both the entity and the resource
+     * @return The instance itself
      */
     @Override
-    public Relation hasResource(Resource resource){
-        TypeName name = resource.type().getName();
-        RelationType hasResource = getGraknGraph().getType(Schema.Resource.HAS_RESOURCE.getName(name));
-        RoleType hasResourceTarget = getGraknGraph().getType(Schema.Resource.HAS_RESOURCE_OWNER.getName(name));
-        RoleType hasResourceValue = getGraknGraph().getType(Schema.Resource.HAS_RESOURCE_VALUE.getName(name));
+    public T resource(Resource resource){
+        String type = "resource";
+        Schema.ImplicitType has = Schema.ImplicitType.HAS;
+        Schema.ImplicitType hasValue = Schema.ImplicitType.HAS_VALUE;
+        Schema.ImplicitType hasOwner  = Schema.ImplicitType.HAS_OWNER;
+
+        //Is this resource a key to me?
+        if(type().keys().contains(resource.type())){
+            type = "key";
+            has = Schema.ImplicitType.KEY;
+            hasValue = Schema.ImplicitType.KEY_VALUE;
+            hasOwner  = Schema.ImplicitType.KEY_OWNER;
+        }
+
+
+        TypeLabel label = resource.type().getLabel();
+        RelationType hasResource = getGraknGraph().getType(has.getLabel(label));
+        RoleType hasResourceTarget = getGraknGraph().getType(hasOwner.getLabel(label));
+        RoleType hasResourceValue = getGraknGraph().getType(hasValue.getLabel(label));
 
         if(hasResource == null || hasResourceTarget == null || hasResourceValue == null){
-            throw new ConceptException(ErrorMessage.HAS_RESOURCE_INVALID.getMessage(type().getName(), resource.type().getName()));
+            throw new ConceptException(ErrorMessage.HAS_INVALID.getMessage(type().getLabel(), type, resource.type().getLabel()));
         }
 
         Relation relation = hasResource.addRelation();
-        relation.putRolePlayer(hasResourceTarget, this);
-        relation.putRolePlayer(hasResourceValue, resource);
+        relation.addRolePlayer(hasResourceTarget, this);
+        relation.addRolePlayer(hasResourceValue, resource);
 
-        return relation;
+        return getThis();
     }
 
     /**
@@ -206,9 +246,8 @@ abstract class InstanceImpl<T extends Instance, V extends Type> extends ConceptI
      */
     protected T type(V type) {
         if(type != null){
-            setInternalType(type.getName());
             putEdge(type, Schema.EdgeLabel.ISA);
-            cachedType.set(type);
+            setInternalType(type().getLabel());
         }
         return getThis();
     }
@@ -218,7 +257,7 @@ abstract class InstanceImpl<T extends Instance, V extends Type> extends ConceptI
      * @param type The type of this concept
      * @return The concept itself casted to the correct interface
      */
-    private T setInternalType(TypeName type){
+    private T setInternalType(TypeLabel type){
         cachedInternalType.set(type);
         return setProperty(Schema.ConceptProperty.TYPE, type.getValue());
     }
@@ -227,7 +266,7 @@ abstract class InstanceImpl<T extends Instance, V extends Type> extends ConceptI
      *
      * @return The id of the type of this concept. This is a shortcut used to prevent traversals.
      */
-    public TypeName getInternalType(){
+    public TypeLabel getInternalType(){
         return cachedInternalType.get();
     }
 }

@@ -20,7 +20,7 @@ package ai.grakn.graql.internal.gremlin.fragment;
 
 import ai.grakn.concept.ConceptId;
 import ai.grakn.concept.ResourceType;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 import ai.grakn.graql.VarName;
 import ai.grakn.graql.admin.ValuePredicateAdmin;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
@@ -29,6 +29,7 @@ import org.apache.tinkerpop.gremlin.structure.Vertex;
 
 import java.util.Optional;
 
+import static ai.grakn.util.Schema.ConceptProperty.TYPE;
 import static ai.grakn.util.Schema.EdgeLabel.SUB;
 
 /**
@@ -41,7 +42,7 @@ public class Fragments {
     private Fragments() {}
 
     public static Fragment shortcut(
-            Optional<TypeName> relationType, Optional<TypeName> roleStart, Optional<TypeName> roleEnd,
+            Optional<TypeLabel> relationType, Optional<TypeLabel> roleStart, Optional<TypeLabel> roleEnd,
             VarName start, VarName end
     ) {
         return new ShortcutFragment(relationType, roleStart, roleEnd, start, end);
@@ -55,111 +56,120 @@ public class Fragments {
         return new OutSubFragment(start, end);
     }
 
-    public static InHasRoleFragment inHasRole(VarName start, VarName end) {
-        return new InHasRoleFragment(start, end);
+    public static InRelatesFragment inRelates(VarName start, VarName end) {
+        return new InRelatesFragment(start, end);
     }
 
-    public static Fragment outHasRole(VarName start, VarName end) {
-        return new OutHasRoleFragment(start, end);
+    public static Fragment outRelates(VarName start, VarName end) {
+        return new OutRelatesFragment(start, end);
     }
 
-    public static InIsaFragment inIsa(VarName start, VarName end) {
+    public static Fragment inIsa(VarName start, VarName end) {
         return new InIsaFragment(start, end, false);
     }
 
-    public static OutIsaFragment outIsa(VarName start, VarName end) {
+    public static Fragment outIsa(VarName start, VarName end) {
         return new OutIsaFragment(start, end, false);
     }
 
     // This method is a special case that allows getting the instances of role-types (castings)
-    public static InIsaFragment inIsaCastings(VarName start, VarName end) {
+    public static Fragment inIsaCastings(VarName start, VarName end) {
         return new InIsaFragment(start, end, true);
     }
 
     // This method is a special case that allows getting the instances of role-types (castings)
-    public static OutIsaFragment outIsaCastings(VarName start, VarName end) {
+    public static Fragment outIsaCastings(VarName start, VarName end) {
         return new OutIsaFragment(start, end, true);
     }
 
-    public static InHasScopeFragment inHasScope(VarName start, VarName end) {
+    public static Fragment inHasScope(VarName start, VarName end) {
         return new InHasScopeFragment(start, end);
     }
 
-    public static OutHasScopeFragment outHasScope(VarName start, VarName end) {
+    public static Fragment outHasScope(VarName start, VarName end) {
         return new OutHasScopeFragment(start, end);
     }
 
-    public static DataTypeFragment dataType(VarName start, ResourceType.DataType dataType) {
+    public static Fragment dataType(VarName start, ResourceType.DataType dataType) {
         return new DataTypeFragment(start, dataType);
     }
 
-    public static InPlaysRoleFragment inPlaysRole(VarName start, VarName end, boolean required) {
-        return new InPlaysRoleFragment(start, end, required);
+    public static Fragment inPlays(VarName start, VarName end, boolean required) {
+        return new InPlaysFragment(start, end, required);
     }
 
-    public static OutPlaysRoleFragment outPlaysRole(VarName start, VarName end, boolean required) {
-        return new OutPlaysRoleFragment(start, end, required);
+    public static Fragment outPlays(VarName start, VarName end, boolean required) {
+        return new OutPlaysFragment(start, end, required);
     }
 
-    public static InCastingFragment inCasting(VarName start, VarName end) {
+    public static Fragment inCasting(VarName start, VarName end) {
         return new InCastingFragment(start, end);
     }
 
-    public static OutCastingFragment outCasting(VarName start, VarName end) {
+    public static Fragment outCasting(VarName start, VarName end) {
         return new OutCastingFragment(start, end);
     }
 
-    public static InRolePlayerFragment inRolePlayer(VarName start, VarName end) {
+    public static Fragment inRolePlayer(VarName start, VarName end) {
         return new InRolePlayerFragment(start, end);
     }
 
-    public static OutRolePlayerFragment outRolePlayer(VarName start, VarName end) {
+    public static Fragment outRolePlayer(VarName start, VarName end) {
         return new OutRolePlayerFragment(start, end);
     }
 
-    public static DistinctCastingFragment distinctCasting(VarName start, VarName otherCastingName) {
+    public static Fragment distinctCasting(VarName start, VarName otherCastingName) {
         return new DistinctCastingFragment(start, otherCastingName);
     }
 
-    public static IdFragment id(VarName start, ConceptId id) {
+    public static Fragment id(VarName start, ConceptId id) {
         return new IdFragment(start, id);
     }
 
-    public static Fragment name(VarName start, TypeName name) {
-        return new NameFragment(start, name);
+    public static Fragment label(VarName start, TypeLabel label) {
+        return new LabelFragment(start, label);
     }
 
-    public static ValueFragment value(VarName start, ValuePredicateAdmin predicate) {
+    public static Fragment value(VarName start, ValuePredicateAdmin predicate) {
         return new ValueFragment(start, predicate);
     }
 
-    public static IsAbstractFragment isAbstract(VarName start) {
+    public static Fragment isAbstract(VarName start) {
         return new IsAbstractFragment(start);
     }
 
-    public static RegexFragment regex(VarName start, String regex) {
+    public static Fragment regex(VarName start, String regex) {
         return new RegexFragment(start, regex);
     }
 
-    public static ValueFlagFragment value(VarName start) {
+    public static Fragment value(VarName start) {
         return new ValueFlagFragment(start);
     }
 
-    public static NotCastingFragment notCasting(VarName start) {
-        return new NotCastingFragment(start);
+    public static Fragment notInternal(VarName start) {
+        return new NotInternalFragment(start);
     }
 
     public static Fragment neq(VarName start, VarName other) {
         return new NeqFragment(start, other);
     }
 
+    /**
+     * A {@link Fragment} that uses an index stored on each resource. Resources are indexed by direct type and value.
+     */
+    public static Fragment resourceIndex(VarName start, TypeLabel typeLabel, Object resourceValue) {
+        return new ResourceIndexFragment(start, typeLabel, resourceValue);
+    }
+
     @SuppressWarnings("unchecked")
     static GraphTraversal<Vertex, Vertex> outSubs(GraphTraversal<Vertex, Vertex> traversal) {
-        return traversal.union(__.identity(), __.repeat(__.out(SUB.getLabel())).emit()).unfold();
+        // These traversals make sure to only navigate types by checking they do not have a `TYPE` property
+        return traversal.union(__.not(__.has(TYPE.name())), __.repeat(__.out(SUB.getLabel())).emit()).unfold();
     }
 
     @SuppressWarnings("unchecked")
     static GraphTraversal<Vertex, Vertex> inSubs(GraphTraversal<Vertex, Vertex> traversal) {
-        return traversal.union(__.identity(), __.repeat(__.in(SUB.getLabel())).emit()).unfold();
+        // These traversals make sure to only navigate types by checking they do not have a `TYPE` property
+        return traversal.union(__.not(__.has(TYPE.name())), __.repeat(__.in(SUB.getLabel())).emit()).unfold();
     }
 }

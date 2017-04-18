@@ -31,7 +31,7 @@ import ai.grakn.graql.internal.reasoner.query.ReasonerQueryImpl;
 /**
  *
  * <p>
- * Atom implementation defining type atoms of the type $varName {isa|sub|plays-role|has-resource|has-scope} $valueVariable)
+ * Atom implementation defining type atoms of the type $varName {isa|sub|plays|has|has-scope} $valueVariable)
  * </p>
  *
  * @author Kasper Piskorski
@@ -70,10 +70,12 @@ public class TypeAtom extends Binary{
     @Override
     public boolean isSelectable() {
         ReasonerQueryImpl parent = (ReasonerQueryImpl) getParentQuery();
-        return isRuleResolvable()
-                || getPredicate() == null
-                || (parent.getIdPredicate(getVarName()) != null && getPredicate() != null)
-                || (!(parent instanceof ReasonerAtomicQuery) && parent.findNextJoinable(this) == null);
+        return getPredicate() == null
+                //type atom corresponding to relation or resource
+                || getType() != null && (getType().isResourceType() ||getType().isRelationType())
+                //disjoint atom
+                || (!(parent instanceof ReasonerAtomicQuery) && parent.findNextJoinable(this) == null)
+                || isRuleResolvable();
     }
 
     @Override

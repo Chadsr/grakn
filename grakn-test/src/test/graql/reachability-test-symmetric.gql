@@ -5,17 +5,17 @@ insert
 #################################################
 
 "vertex" sub entity
-    has-resource index;
+    has index;
 
 "link-endA" sub role;
 "link-endB" sub role;
-"link" sub relation, has-role link-endA, has-role link-endB;
-vertex plays-role link-endA, plays-role link-endB;
+"link" sub relation, relates link-endA, relates link-endB;
+vertex plays link-endA, plays link-endB;
 
 "reach-endA" sub role;
 "reach-endB" sub role;
-"reachable" sub relation, has-role reach-endA, has-role reach-endB;
-vertex plays-role reach-endA, plays-role reach-endB;
+"reachable" sub relation, relates reach-endA, relates reach-endB;
+vertex plays reach-endA, plays reach-endB;
 
 "index" sub resource, datatype string;
 
@@ -41,11 +41,11 @@ isa inference-rule,
 lhs {
 ($x, $y) isa link;},
 rhs {
-($x, $y) isa reachable;};
+(reach-endA: $x, reach-endB: $y) isa reachable;};
 
 isa inference-rule,
 lhs {
-($x, $z) isa link;
-($z, $y) isa reachable;},
+(link-endA: $x, link-endB: $z) isa link;
+(reach-endA: $z, reach-endB: $y) isa reachable;},
 rhs {
-($x, $y) isa reachable;};
+(reach-endA: $x, reach-endB: $y) isa reachable;};

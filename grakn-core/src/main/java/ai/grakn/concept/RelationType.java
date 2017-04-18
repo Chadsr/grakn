@@ -18,6 +18,8 @@
 
 package ai.grakn.concept;
 
+import ai.grakn.exception.ConceptException;
+
 import java.util.Collection;
 
 /**
@@ -36,12 +38,62 @@ import java.util.Collection;
 public interface RelationType extends Type {
     //------------------------------------- Modifiers ----------------------------------
     /**
-     * Adds a new empty Relation.
+     * Creates and returns a new {@link Relation} instance, whose direct type will be this type.
      * @see Relation
      *
      * @return a new empty relation.
+     *
+     * @throws ConceptException if this is a meta type
      */
     Relation addRelation();
+
+    /**
+     * Sets the supertype of the RelationType to be the RelationType specified.
+     *
+     * @param type The supertype of this RelationType
+     * @return  The RelationType itself.
+     */
+    RelationType superType(RelationType type);
+
+    /**
+     * Adds another subtype to this type
+     *
+     * @param type The sub type of this relation type
+     * @return The RelationType itself
+     */
+    RelationType subType(RelationType type);
+
+    /**
+     * Classifies the type to a specific scope. This allows you to optionally categorise types.
+     *
+     * @param scope The category of this Type
+     * @return The Type itself.
+     */
+    RelationType scope(Instance scope);
+
+    /**
+     * Delete the scope specified.
+     *
+     * @param scope The Instances that is currently scoping this Type.
+     * @return The Type itself
+     */
+    RelationType deleteScope(Instance scope);
+
+    /**
+     * Creates a RelationType which allows this type and a resource type to be linked in a strictly one-to-one mapping.
+     *
+     * @param resourceType The resource type which instances of this type should be allowed to play.
+     * @return The Type itself.
+     */
+    RelationType key(ResourceType resourceType);
+
+    /**
+     * Creates a RelationType which allows this type and a resource type to be linked.
+     *
+     * @param resourceType The resource type which instances of this type should be allowed to play.
+     * @return The Type itself.
+     */
+    RelationType resource(ResourceType resourceType);
 
     //------------------------------------- Accessors ----------------------------------
     /**
@@ -50,7 +102,7 @@ public interface RelationType extends Type {
      *
      * @return A list of the RoleTypes which make up this RelationType.
      */
-    Collection<RoleType> hasRoles();
+    Collection<RoleType> relates();
 
     //------------------------------------- Edge Handling ----------------------------------
 
@@ -61,7 +113,7 @@ public interface RelationType extends Type {
      * @param roleType A new role which is part of this relationship.
      * @return The RelationType itself.
      */
-    RelationType hasRole(RoleType roleType);
+    RelationType relates(RoleType roleType);
 
     //------------------------------------- Other ----------------------------------
 
@@ -72,7 +124,7 @@ public interface RelationType extends Type {
      * @param roleType The RoleType to delete from the RelationType.
      * @return The RelationType itself.
      */
-    RelationType deleteHasRole(RoleType roleType);
+    RelationType deleteRelates(RoleType roleType);
 
     //---- Inherited Methods
     /**
@@ -84,18 +136,10 @@ public interface RelationType extends Type {
     RelationType setAbstract(Boolean isAbstract);
 
     /**
-     * Returns the supertype of this RelationType.
-     * @return The supertype of this RelationType
+     * Returns the direct supertype of this RelationType.
+     * @return The direct supertype of this RelationType
      */
     RelationType superType();
-
-    /**
-     * Sets the supertype of the RelationType to be the EntityType specified.
-     *
-     * @param type The supertype of this RelationType
-     * @return  The RelationType itself.
-     */
-    RelationType superType(RelationType type);
 
     /**
      * Returns a collection of subtypes of this RelationType.
@@ -110,7 +154,7 @@ public interface RelationType extends Type {
      * @param roleType The RoleType which the instances of this Type are allowed to play.
      * @return  The RelationType itself.
      */
-    RelationType playsRole(RoleType roleType);
+    RelationType plays(RoleType roleType);
 
     /**
      * Removes the RoleType to prevent instances of this RelationType from playing it.
@@ -118,7 +162,7 @@ public interface RelationType extends Type {
      * @param roleType The RoleType which the instances of this Type should no longer be allowed to play.
      * @return The RelationType itself.
      */
-    RelationType deletePlaysRole(RoleType roleType);
+    RelationType deletePlays(RoleType roleType);
 
     /**
      * Retrieve all the Relation instances of this RelationType

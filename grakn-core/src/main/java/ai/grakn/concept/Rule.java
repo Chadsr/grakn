@@ -37,6 +37,15 @@ import java.util.Collection;
  *
  */
 public interface Rule extends Instance{
+    //------------------------------------- Modifiers ----------------------------------
+    /**
+     * Creates a relation from this instance to the provided resource.
+     *
+     * @param resource The resource to which a relationship is created
+     * @return The instance itself
+     */
+    Rule resource(Resource resource);
+
     //------------------------------------- Accessors ----------------------------------
     /**
      * Retrieves the Left Hand Side of a Graql query.
@@ -53,22 +62,6 @@ public interface Rule extends Instance{
     Pattern getRHS();
 
     //------------------------------------- Edge Handling ----------------------------------
-    /**
-     * Add a hypothesis of the specified Type to the Rule.
-     *
-     * @param type The Type which this Rule applies to.
-     * @return The Rule itself
-     */
-    Rule addHypothesis(Type type);
-    /**
-     *
-     * Add a conclusion of the specified Type to the Rule.
-     *
-     * @param type The Type which is the conclusion of this Rule.
-     * @return The Rule itself
-     */
-    Rule addConclusion(Type type);
-
     /**
      * Retrieve a set of Types that constitute a part of the hypothesis of this Rule.
      *

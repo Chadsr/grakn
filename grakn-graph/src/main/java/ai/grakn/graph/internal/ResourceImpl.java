@@ -27,10 +27,10 @@ import ai.grakn.util.Schema;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 
 import java.util.Collection;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.function.Function;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+import static ai.grakn.util.Schema.generateResourceIndex;
 
 /**
  * <p>
@@ -72,13 +72,9 @@ class ResourceImpl<D> extends InstanceImpl<Resource<D>, ResourceType<D>> impleme
      */
     @Override
     public Collection<Instance> ownerInstances() {
-        Set<Instance> owners = new HashSet<>();
-        this.getOutgoingNeighbours(Schema.EdgeLabel.SHORTCUT).forEach(concept -> {
-            if(!concept.isResource()){
-                owners.add(concept.asInstance());
-            }
-        });
-        return owners;
+        return getShortcutNeighbours().stream().
+                filter(concept -> !concept.isResource()).
+                collect(Collectors.toSet());
     }
 
     @Override
@@ -103,26 +99,18 @@ class ResourceImpl<D> extends InstanceImpl<Resource<D>, ResourceType<D>> impleme
             //Not checking the datatype because the regex will always be null for non strings.
             String regex = resourceType.getRegex();
             if (regex != null && !Pattern.matches(regex, (String) value)) {
-                throw new InvalidConceptValueException(ErrorMessage.REGEX_INSTANCE_FAILURE.getMessage(regex, getId(), value, type().getName()));
+                throw new InvalidConceptValueException(ErrorMessage.REGEX_INSTANCE_FAILURE.getMessage(regex, getId(), value, type().getLabel()));
             }
 
             Schema.ConceptProperty property = dataType().getConceptProperty();
-            setImmutableProperty(property, castValue(value), getProperty(property), Function.identity());
 
-            return setUniqueProperty(Schema.ConceptProperty.INDEX, generateResourceIndex(type(), value.toString()));
+            //noinspection unchecked
+            setImmutableProperty(property, castValue(value), getProperty(property), (v) -> resourceType.getDataType().getPersistenceValue((D) v));
+
+            return setUniqueProperty(Schema.ConceptProperty.INDEX, generateResourceIndex(type().getLabel(), value.toString()));
         } catch (ClassCastException e) {
             throw new InvalidConceptValueException(ErrorMessage.INVALID_DATATYPE.getMessage(value, dataType().getName()));
         }
-    }
-
-    /**
-     *
-     * @param resourceType it's resource type
-     * @param value The value of the resource
-     * @return A unique id for the resource
-     */
-    public static String generateResourceIndex(ResourceType resourceType, String value){
-        return Schema.BaseType.RESOURCE.name() + "-" + resourceType.getName() + "-" + value;
     }
 
     /**
@@ -154,7 +142,7 @@ class ResourceImpl<D> extends InstanceImpl<Resource<D>, ResourceType<D>> impleme
      */
     @Override
     public D getValue(){
-        return getProperty(dataType().getConceptProperty());
+        return dataType().getValue(getProperty(dataType().getConceptProperty()));
     }
 
     @Override

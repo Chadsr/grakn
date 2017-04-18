@@ -58,7 +58,7 @@ class RuleTypeImpl extends TypeImpl<RuleType, Rule> implements RuleType {
     }
 
     @Override
-    public Rule addRule(Pattern lhs, Pattern rhs) {
+    public Rule putRule(Pattern lhs, Pattern rhs) {
         if(lhs == null) {
             throw new InvalidConceptValueException(ErrorMessage.NULL_VALUE.getMessage(Schema.ConceptProperty.RULE_LHS.name()));
         }
@@ -67,7 +67,13 @@ class RuleTypeImpl extends TypeImpl<RuleType, Rule> implements RuleType {
             throw new InvalidConceptValueException(ErrorMessage.NULL_VALUE.getMessage(Schema.ConceptProperty.RULE_RHS.name()));
         }
 
-        return addInstance(Schema.BaseType.RULE, (vertex, type) ->
+        return putInstance(Schema.BaseType.RULE,
+                () -> getRule(lhs, rhs), (vertex, type) ->
                 getGraknGraph().getElementFactory().buildRule(vertex, type, lhs, rhs));
+    }
+
+    private Rule getRule(Pattern lhs, Pattern rhs) {
+        String index = RuleImpl.generateRuleIndex(this, lhs, rhs);
+        return getGraknGraph().getConcept(Schema.ConceptProperty.INDEX, index);
     }
 }

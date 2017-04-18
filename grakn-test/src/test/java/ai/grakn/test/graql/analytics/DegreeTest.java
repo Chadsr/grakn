@@ -19,7 +19,8 @@
 package ai.grakn.test.graql.analytics;
 
 import ai.grakn.GraknGraph;
-import ai.grakn.GraknGraphFactory;
+import ai.grakn.GraknSession;
+import ai.grakn.GraknTxType;
 import ai.grakn.concept.ConceptId;
 import ai.grakn.concept.Entity;
 import ai.grakn.concept.EntityType;
@@ -28,11 +29,9 @@ import ai.grakn.concept.RelationType;
 import ai.grakn.concept.Resource;
 import ai.grakn.concept.ResourceType;
 import ai.grakn.concept.RoleType;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 import ai.grakn.exception.GraknValidationException;
 import ai.grakn.graph.internal.computer.GraknSparkComputer;
-import ai.grakn.graql.ComputeQuery;
-import ai.grakn.graql.internal.analytics.GraknVertexProgram;
 import ai.grakn.test.EngineContext;
 import com.google.common.collect.Sets;
 import org.junit.Before;
@@ -58,7 +57,7 @@ public class DegreeTest {
 
     @ClassRule
     public static final EngineContext context = EngineContext.startInMemoryServer();
-    private GraknGraphFactory factory;
+    private GraknSession factory;
     private GraknGraph graph;
 
     @Before
@@ -67,7 +66,7 @@ public class DegreeTest {
         assumeFalse(usingOrientDB());
 
         factory = context.factoryWithNewKeyspace();
-        graph = factory.getGraph();
+        graph = factory.open(GraknTxType.WRITE);
     }
 
     @Test
@@ -86,26 +85,25 @@ public class DegreeTest {
 
         RoleType role1 = graph.putRoleType("role1");
         RoleType role2 = graph.putRoleType("role2");
-        thing.playsRole(role1).playsRole(role2);
-        anotherThing.playsRole(role1).playsRole(role2);
-        RelationType related = graph.putRelationType("related").hasRole(role1).hasRole(role2);
+        thing.plays(role1).plays(role2);
+        anotherThing.plays(role1).plays(role2);
+        RelationType related = graph.putRelationType("related").relates(role1).relates(role2);
 
         // relate them
         ConceptId id1 = related.addRelation()
-                .putRolePlayer(role1, graph.getConcept(entity1))
-                .putRolePlayer(role2, graph.getConcept(entity2))
+                .addRolePlayer(role1, graph.getConcept(entity1))
+                .addRolePlayer(role2, graph.getConcept(entity2))
                 .getId();
         ConceptId id2 = related.addRelation()
-                .putRolePlayer(role1, graph.getConcept(entity2))
-                .putRolePlayer(role2, graph.getConcept(entity3))
+                .addRolePlayer(role1, graph.getConcept(entity2))
+                .addRolePlayer(role2, graph.getConcept(entity3))
                 .getId();
         ConceptId id3 = related.addRelation()
-                .putRolePlayer(role1, graph.getConcept(entity2))
-                .putRolePlayer(role2, graph.getConcept(entity4))
+                .addRolePlayer(role1, graph.getConcept(entity2))
+                .addRolePlayer(role2, graph.getConcept(entity4))
                 .getId();
-        graph.commitOnClose();
-        graph.close();
-        graph = factory.getGraph();
+        graph.commit();
+        graph = factory.open(GraknTxType.WRITE);
 
         Map<ConceptId, Long> correctDegrees = new HashMap<>();
         correctDegrees.put(entity1, 1L);
@@ -122,18 +120,22 @@ public class DegreeTest {
             list.add(i);
         }
         GraknSparkComputer.clear();
+        graph.close();
         list.parallelStream().forEach(i -> {
-            Map<Long, Set<String>> degrees = factory.getGraph().graql().compute().degree().execute();
+            try (GraknGraph graph = factory.open(GraknTxType.WRITE)) {
+                Map<Long, Set<String>> degrees = graph.graql().compute().degree().execute();
 
-            assertEquals(3, degrees.size());
-            degrees.entrySet().forEach(entry -> entry.getValue().forEach(
-                    id -> {
-                        assertTrue(correctDegrees.containsKey(ConceptId.of(id)));
-                        assertEquals(correctDegrees.get(ConceptId.of(id)), entry.getKey());
-                    }
-            ));
+                assertEquals(3, degrees.size());
+                degrees.entrySet().forEach(entry -> entry.getValue().forEach(
+                        id -> {
+                            assertTrue(correctDegrees.containsKey(ConceptId.of(id)));
+                            assertEquals(correctDegrees.get(ConceptId.of(id)), entry.getKey());
+                        }
+                ));
+            }
         });
 
+        graph = factory.open(GraknTxType.WRITE);
         Map<Long, Set<String>> degrees2 = graph.graql().compute().degree().of("thing").execute();
 
         assertEquals(2, degrees2.size());
@@ -202,17 +204,16 @@ public class DegreeTest {
         // create a simple graph
         RoleType pet = graph.putRoleType("pet");
         RoleType owner = graph.putRoleType("owner");
-        graph.putRelationType("mans-best-friend").hasRole(pet).hasRole(owner);
-        graph.putEntityType("person").playsRole(owner);
-        EntityType animal = graph.putEntityType("animal").playsRole(pet);
+        graph.putRelationType("mans-best-friend").relates(pet).relates(owner);
+        graph.putEntityType("person").plays(owner);
+        EntityType animal = graph.putEntityType("animal").plays(pet);
         EntityType dog = graph.putEntityType("dog").superType(animal);
         ConceptId foofoo = dog.addEntity().getId();
-        graph.commitOnClose();
-        graph.close();
-        graph = factory.getGraph();
+        graph.commit();
+        graph = factory.open(GraknTxType.WRITE);
 
         // set subgraph
-        HashSet<TypeName> ct = Sets.newHashSet(TypeName.of("person"), TypeName.of("animal"), TypeName.of("mans-best-friend"));
+        HashSet<TypeLabel> ct = Sets.newHashSet(TypeLabel.of("person"), TypeLabel.of("animal"), TypeLabel.of("mans-best-friend"));
         Map<Long, Set<String>> degrees = graph.graql().compute().degree().in(ct).execute();
 
         // check that dog has a degree to confirm sub has been inferred
@@ -227,24 +228,24 @@ public class DegreeTest {
         // create a simple graph
         RoleType pet = graph.putRoleType("pet");
         RoleType owner = graph.putRoleType("owner");
-        RelationType mansBestFriend = graph.putRelationType("mans-best-friend").hasRole(pet).hasRole(owner);
+        RelationType mansBestFriend = graph.putRelationType("mans-best-friend").relates(pet).relates(owner);
         RoleType target = graph.putRoleType("target");
         RoleType value = graph.putRoleType("value");
-        RelationType hasName = graph.putRelationType("has-name").hasRole(value).hasRole(target);
-        EntityType person = graph.putEntityType("person").playsRole(owner);
-        EntityType animal = graph.putEntityType("animal").playsRole(pet).playsRole(target);
-        ResourceType<String> name = graph.putResourceType("name", ResourceType.DataType.STRING).playsRole(value);
+        RelationType hasName = graph.putRelationType("has-name").relates(value).relates(target);
+        EntityType person = graph.putEntityType("person").plays(owner);
+        EntityType animal = graph.putEntityType("animal").plays(pet).plays(target);
+        ResourceType<String> name = graph.putResourceType("name", ResourceType.DataType.STRING).plays(value);
         ResourceType<String> altName =
-                graph.putResourceType("alternate-name", ResourceType.DataType.STRING).playsRole(value);
+                graph.putResourceType("alternate-name", ResourceType.DataType.STRING).plays(value);
 
         // add data to the graph
         Entity coco = animal.addEntity();
         Entity dave = person.addEntity();
         Resource coconut = name.putResource("coconut");
         Resource stinky = altName.putResource("stinky");
-        Relation daveOwnsCoco = mansBestFriend.addRelation().putRolePlayer(owner, dave).putRolePlayer(pet, coco);
-        Relation cocoName = hasName.addRelation().putRolePlayer(target, coco).putRolePlayer(value, coconut);
-        Relation cocoAltName = hasName.addRelation().putRolePlayer(target, coco).putRolePlayer(value, stinky);
+        Relation daveOwnsCoco = mansBestFriend.addRelation().addRolePlayer(owner, dave).addRolePlayer(pet, coco);
+        Relation cocoName = hasName.addRelation().addRolePlayer(target, coco).addRolePlayer(value, coconut);
+        Relation cocoAltName = hasName.addRelation().addRolePlayer(target, coco).addRolePlayer(value, stinky);
 
         // manually compute the degree for small graph
         Map<ConceptId, Long> subGraphReferenceDegrees = new HashMap<>();
@@ -271,12 +272,11 @@ public class DegreeTest {
         referenceDegrees.put(cocoName.getId(), 2L);
         referenceDegrees.put(cocoAltName.getId(), 2L);
 
-        graph.commitOnClose();
-        graph.close();
-        graph = factory.getGraph();
+        graph.commit();
+        graph = factory.open(GraknTxType.WRITE);
 
         // create a subgraph excluding resources and the relationship
-        HashSet<TypeName> subGraphTypes = Sets.newHashSet(TypeName.of("animal"), TypeName.of("person"), TypeName.of("mans-best-friend"));
+        HashSet<TypeLabel> subGraphTypes = Sets.newHashSet(TypeLabel.of("animal"), TypeLabel.of("person"), TypeLabel.of("mans-best-friend"));
         Map<Long, Set<String>> degrees = graph.graql().compute().degree().in(subGraphTypes).execute();
         assertFalse(degrees.isEmpty());
         degrees.entrySet().forEach(entry -> entry.getValue().forEach(
@@ -287,7 +287,7 @@ public class DegreeTest {
         ));
 
         // create a subgraph excluding resource type only
-        HashSet<TypeName> almostFullTypes = Sets.newHashSet(TypeName.of("animal"), TypeName.of("person"), TypeName.of("mans-best-friend"), TypeName.of("has-name"), TypeName.of("name"));
+        HashSet<TypeLabel> almostFullTypes = Sets.newHashSet(TypeLabel.of("animal"), TypeLabel.of("person"), TypeLabel.of("mans-best-friend"), TypeLabel.of("has-name"), TypeLabel.of("name"));
         degrees = graph.graql().compute().degree().in(almostFullTypes).execute();
         assertFalse(degrees.isEmpty());
         degrees.entrySet().forEach(entry -> entry.getValue().forEach(
@@ -318,15 +318,15 @@ public class DegreeTest {
         RoleType owner = graph.putRoleType("owner");
         RoleType breeder = graph.putRoleType("breeder");
         RelationType mansBestFriend = graph.putRelationType("mans-best-friend")
-                .hasRole(pet).hasRole(owner).hasRole(breeder);
-        EntityType person = graph.putEntityType("person").playsRole(owner).playsRole(breeder);
-        EntityType animal = graph.putEntityType("animal").playsRole(pet);
+                .relates(pet).relates(owner).relates(breeder);
+        EntityType person = graph.putEntityType("person").plays(owner).plays(breeder);
+        EntityType animal = graph.putEntityType("animal").plays(pet);
 
         // make one person breeder and owner
         Entity coco = animal.addEntity();
         Entity dave = person.addEntity();
         Relation daveBreedsAndOwnsCoco = mansBestFriend.addRelation()
-                .putRolePlayer(pet, coco).putRolePlayer(owner, dave);
+                .addRolePlayer(pet, coco).addRolePlayer(owner, dave);
 
         // manual degrees
         Map<ConceptId, Long> referenceDegrees = new HashMap<>();
@@ -334,9 +334,8 @@ public class DegreeTest {
         referenceDegrees.put(dave.getId(), 1L);
         referenceDegrees.put(daveBreedsAndOwnsCoco.getId(), 2L);
 
-        graph.commitOnClose();
-        graph.close();
-        graph = factory.getGraph();
+        graph.commit();
+        graph = factory.open(GraknTxType.WRITE);
 
         // compute and persist degrees
         Map<Long, Set<String>> degrees = graph.graql().compute().degree().execute();
@@ -357,22 +356,22 @@ public class DegreeTest {
         // create a simple graph
         RoleType pet = graph.putRoleType("pet");
         RoleType owner = graph.putRoleType("owner");
-        RelationType mansBestFriend = graph.putRelationType("mans-best-friend").hasRole(pet).hasRole(owner);
+        RelationType mansBestFriend = graph.putRelationType("mans-best-friend").relates(pet).relates(owner);
         RoleType target = graph.putRoleType("target");
         RoleType value = graph.putRoleType("value");
-        RelationType hasName = graph.putRelationType("has-name").hasRole(value).hasRole(target);
-        EntityType person = graph.putEntityType("person").playsRole(owner);
-        EntityType animal = graph.putEntityType("animal").playsRole(pet).playsRole(target);
-        ResourceType<String> name = graph.putResourceType("name", ResourceType.DataType.STRING).playsRole(value);
+        RelationType hasName = graph.putRelationType("has-name").relates(value).relates(target);
+        EntityType person = graph.putEntityType("person").plays(owner);
+        EntityType animal = graph.putEntityType("animal").plays(pet).plays(target);
+        ResourceType<String> name = graph.putResourceType("name", ResourceType.DataType.STRING).plays(value);
         ResourceType<String> altName =
-                graph.putResourceType("alternate-name", ResourceType.DataType.STRING).playsRole(value);
+                graph.putResourceType("alternate-name", ResourceType.DataType.STRING).plays(value);
         RoleType ownership = graph.putRoleType("ownership");
         RoleType ownershipResource = graph.putRoleType("ownership-resource");
         RelationType hasOwnershipResource =
-                graph.putRelationType("has-ownership-resource").hasRole(ownership).hasRole(ownershipResource);
+                graph.putRelationType("has-ownership-resource").relates(ownership).relates(ownershipResource);
         ResourceType<String> startDate =
-                graph.putResourceType("start-date", ResourceType.DataType.STRING).playsRole(ownershipResource);
-        mansBestFriend.playsRole(ownership);
+                graph.putResourceType("start-date", ResourceType.DataType.STRING).plays(ownershipResource);
+        mansBestFriend.plays(ownership);
 
         // add data to the graph
         Entity coco = animal.addEntity();
@@ -380,12 +379,12 @@ public class DegreeTest {
         Resource coconut = name.putResource("coconut");
         Resource stinky = altName.putResource("stinky");
         Relation daveOwnsCoco = mansBestFriend.addRelation()
-                .putRolePlayer(owner, dave).putRolePlayer(pet, coco);
-        hasName.addRelation().putRolePlayer(target, coco).putRolePlayer(value, coconut);
-        hasName.addRelation().putRolePlayer(target, coco).putRolePlayer(value, stinky);
+                .addRolePlayer(owner, dave).addRolePlayer(pet, coco);
+        hasName.addRelation().addRolePlayer(target, coco).addRolePlayer(value, coconut);
+        hasName.addRelation().addRolePlayer(target, coco).addRolePlayer(value, stinky);
         Resource sd = startDate.putResource("01/01/01");
         Relation ownsFrom = hasOwnershipResource.addRelation()
-                .putRolePlayer(ownershipResource, sd).putRolePlayer(ownership, daveOwnsCoco);
+                .addRolePlayer(ownershipResource, sd).addRolePlayer(ownership, daveOwnsCoco);
 
         // manually compute the degree
         Map<ConceptId, Long> referenceDegrees1 = new HashMap<>();
@@ -401,13 +400,12 @@ public class DegreeTest {
         referenceDegrees2.put(dave.getId(), 1L);
         referenceDegrees2.put(daveOwnsCoco.getId(), 2L);
 
-        graph.commitOnClose();
-        graph.close();
-        graph = factory.getGraph();
+        graph.commit();
+        graph = factory.open(GraknTxType.WRITE);
 
         // create a subgraph with assertion on assertion
-        HashSet<TypeName> ct =
-                Sets.newHashSet(TypeName.of("animal"), TypeName.of("person"), TypeName.of("mans-best-friend"), TypeName.of("start-date"), TypeName.of("has-ownership-resource"));
+        HashSet<TypeLabel> ct =
+                Sets.newHashSet(TypeLabel.of("animal"), TypeLabel.of("person"), TypeLabel.of("mans-best-friend"), TypeLabel.of("start-date"), TypeLabel.of("has-ownership-resource"));
         Map<Long, Set<String>> degrees = graph.graql().compute().degree().in(ct).execute();
         assertTrue(!degrees.isEmpty());
         degrees.entrySet().forEach(entry -> entry.getValue().forEach(
@@ -419,9 +417,9 @@ public class DegreeTest {
 
         // create subgraph without assertion on assertion
         ct.clear();
-        ct.add(TypeName.of("animal"));
-        ct.add(TypeName.of("person"));
-        ct.add(TypeName.of("mans-best-friend"));
+        ct.add(TypeLabel.of("animal"));
+        ct.add(TypeLabel.of("person"));
+        ct.add(TypeLabel.of("mans-best-friend"));
         degrees = graph.graql().compute().degree().in(ct).execute();
         assertFalse(degrees.isEmpty());
         degrees.entrySet().forEach(entry -> entry.getValue().forEach(
@@ -443,13 +441,13 @@ public class DegreeTest {
         RoleType actor = graph.putRoleType("actor");
         RoleType characterBeingPlayed = graph.putRoleType("character-being-played");
         RelationType hasCast = graph.putRelationType("has-cast")
-                .hasRole(productionWithCast)
-                .hasRole(actor)
-                .hasRole(characterBeingPlayed);
+                .relates(productionWithCast)
+                .relates(actor)
+                .relates(characterBeingPlayed);
 
-        EntityType movie = graph.putEntityType("movie").playsRole(productionWithCast);
-        EntityType person = graph.putEntityType("person").playsRole(actor);
-        EntityType character = graph.putEntityType("character").playsRole(characterBeingPlayed);
+        EntityType movie = graph.putEntityType("movie").plays(productionWithCast);
+        EntityType person = graph.putEntityType("person").plays(actor);
+        EntityType character = graph.putEntityType("character").plays(characterBeingPlayed);
 
         Entity godfather = movie.addEntity();
         Entity marlonBrando = person.addEntity();
@@ -457,14 +455,13 @@ public class DegreeTest {
         Entity donVitoCorleone = character.addEntity();
 
         Relation relation = hasCast.addRelation()
-                .putRolePlayer(productionWithCast, godfather)
-                .putRolePlayer(actor, marlonBrando)
-                .putRolePlayer(characterBeingPlayed, donVitoCorleone);
+                .addRolePlayer(productionWithCast, godfather)
+                .addRolePlayer(actor, marlonBrando)
+                .addRolePlayer(characterBeingPlayed, donVitoCorleone);
         ConceptId relationId = relation.getId();
 
-        graph.commitOnClose();
-        graph.close();
-        graph = factory.getGraph();
+        graph.commit();
+        graph = factory.open(GraknTxType.WRITE);
 
         Map<Long, Set<String>> degrees = graph.graql().compute().degree().execute();
         assertTrue(degrees.get(3L).contains(relationId.getValue()));
@@ -482,18 +479,18 @@ public class DegreeTest {
         RoleType owner = graph.putRoleType("owner");
         RoleType breeder = graph.putRoleType("breeder");
         RelationType mansBestFriend = graph.putRelationType("mans-best-friend")
-                .hasRole(pet).hasRole(owner).hasRole(breeder);
-        EntityType person = graph.putEntityType("person").playsRole(owner).playsRole(breeder);
-        EntityType animal = graph.putEntityType("animal").playsRole(pet);
+                .relates(pet).relates(owner).relates(breeder);
+        EntityType person = graph.putEntityType("person").plays(owner).plays(breeder);
+        EntityType animal = graph.putEntityType("animal").plays(pet);
 
         // make one person breeder and owner
         Entity coco = animal.addEntity();
         Entity dave = person.addEntity();
 
         Relation daveBreedsAndOwnsCoco = mansBestFriend.addRelation()
-                .putRolePlayer(pet, coco)
-                .putRolePlayer(owner, dave)
-                .putRolePlayer(breeder, dave);
+                .addRolePlayer(pet, coco)
+                .addRolePlayer(owner, dave)
+                .addRolePlayer(breeder, dave);
 
         // manual degrees
         Map<ConceptId, Long> referenceDegrees = new HashMap<>();
@@ -501,9 +498,8 @@ public class DegreeTest {
         referenceDegrees.put(dave.getId(), 2L);
         referenceDegrees.put(daveBreedsAndOwnsCoco.getId(), 3L);
 
-        graph.commitOnClose();
-        graph.close();
-        graph = factory.getGraph();
+        graph.commit();
+        graph = factory.open(GraknTxType.WRITE);
 
         Map<Long, Set<String>> degrees = graph.graql().compute().degree().execute();
         assertFalse(degrees.isEmpty());
@@ -526,19 +522,19 @@ public class DegreeTest {
         RoleType owner = graph.putRoleType("owner");
         RoleType breeder = graph.putRoleType("breeder");
         RelationType mansBestFriend = graph.putRelationType("mans-best-friend")
-                .hasRole(pet).hasRole(owner).hasRole(breeder);
-        EntityType person = graph.putEntityType("person").playsRole(owner).playsRole(breeder);
-        EntityType dog = graph.putEntityType("dog").playsRole(pet);
-        EntityType cat = graph.putEntityType("cat").playsRole(pet);
+                .relates(pet).relates(owner).relates(breeder);
+        EntityType person = graph.putEntityType("person").plays(owner).plays(breeder);
+        EntityType dog = graph.putEntityType("dog").plays(pet);
+        EntityType cat = graph.putEntityType("cat").plays(pet);
 
         // make one person breeder and owner of a dog and a cat
         Entity beast = dog.addEntity();
         Entity coco = cat.addEntity();
         Entity dave = person.addEntity();
         Relation daveBreedsAndOwnsCoco = mansBestFriend.addRelation()
-                .putRolePlayer(owner, dave).putRolePlayer(breeder, dave).putRolePlayer(pet, coco);
+                .addRolePlayer(owner, dave).addRolePlayer(breeder, dave).addRolePlayer(pet, coco);
         Relation daveBreedsAndOwnsBeast = mansBestFriend.addRelation()
-                .putRolePlayer(owner, dave).putRolePlayer(breeder, dave).putRolePlayer(pet, beast);
+                .addRolePlayer(owner, dave).addRolePlayer(breeder, dave).addRolePlayer(pet, beast);
 
         // manual degrees
         Map<ConceptId, Long> referenceDegrees = new HashMap<>();
@@ -548,13 +544,12 @@ public class DegreeTest {
         referenceDegrees.put(daveBreedsAndOwnsBeast.getId(), 2L);
 
         // validate
-        graph.commitOnClose();
-        graph.close();
-        graph = factory.getGraph();
+        graph.commit();
+        graph = factory.open(GraknTxType.WRITE);
 
         // check degree for dave owning cats
         //TODO: should we count the relationship even if there is no cat attached?
-        HashSet<TypeName> ct = Sets.newHashSet(TypeName.of("mans-best-friend"), TypeName.of("cat"), TypeName.of("person"));
+        HashSet<TypeLabel> ct = Sets.newHashSet(TypeLabel.of("mans-best-friend"), TypeLabel.of("cat"), TypeLabel.of("person"));
         Map<Long, Set<String>> degrees = graph.graql().compute().degree().in(ct).execute();
         assertFalse(degrees.isEmpty());
         degrees.entrySet().forEach(entry -> entry.getValue().forEach(

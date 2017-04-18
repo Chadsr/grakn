@@ -20,12 +20,52 @@ package ai.grakn.graph.admin;
 
 import ai.grakn.concept.ConceptId;
 
+import java.util.Map;
+import java.util.Set;
+
 /**
  * Admin interface for Caching concepts which can be used later.
  *
  * @author Filipe Teixeira
  */
+//TODO: Remove bloat from this interface
 public interface ConceptCache {
+
+    /**
+     *
+     * @return All the keyspaces with jobs currently pending on them
+     */
+    Set<String> getKeyspaces();
+
+    /**
+     *
+     * @param keyspace The keyspace of a specific graph.
+     * @return The number of jobs pending to be performed on that graph
+     */
+    long getNumJobs(String keyspace);
+
+    /**
+     * Removes all jobs from the keyspace
+     *
+     * @param keyspace The keyspace to purge of all jobs
+     */
+    void clearAllJobs(String keyspace);
+
+    /**
+     *
+     * @return The timestamp of the last time a job was added
+     */
+    //TODO: This should also be keyspace specific
+    long getLastTimeJobAdded();
+
+    //-------------------- Casting Jobs
+    /**
+     *
+     * @param keyspace The keyspace of a specific graph.
+     * @return The unique index and set of concept ids which should be merged into that index
+     */
+    Map<String, Set<ConceptId>> getCastingJobs(String keyspace);
+
     /**
      *
      * @param keyspace The keyspace of the concepts
@@ -41,6 +81,29 @@ public interface ConceptCache {
      * @param castingId The casting Id which no longer needs post processing.
      */
     void deleteJobCasting(String keyspace, String castingIndex, ConceptId castingId);
+
+    /**
+     *
+     * @param keyspace The keyspace of a specific graph.
+     * @return The number of casting jobs pending to be performed on that graph
+     */
+    long getNumCastingJobs(String keyspace);
+
+    /**
+     * Deletes the job set only if there are no pending jobs
+     *
+     * @param keyspace The keyspace of the concepts
+     * @param conceptIndex The unique index value has been enforced.
+     */
+    void clearJobSetCastings(String keyspace, String conceptIndex);
+
+    //-------------------- Resource Jobs
+    /**
+     *
+     * @param keyspace The keyspace of a specific graph.
+     * @return The unique index and set of concept ids which should be merged into that index
+     */
+    Map<String, Set<ConceptId>> getResourceJobs(String keyspace);
 
     /**
      *
@@ -60,22 +123,16 @@ public interface ConceptCache {
 
     /**
      *
+     * @param keyspace The keyspace of a specific graph.
+     * @return The number of resource jobs pending to be performed on that graph
+     */
+    long getNumResourceJobs(String keyspace);
+
+    /**
+     * Deletes the job set only if there are no pending jobs
+     *
      * @param keyspace The keyspace of the concepts
      * @param conceptIndex The unique index value which has been enforced.
      */
     void clearJobSetResources(String keyspace, String conceptIndex);
-
-    /**
-     *
-     * @param keyspace The keyspace of the concepts
-     * @param conceptIndex The unique index value has been enforced.
-     */
-    void clearJobSetCastings(String keyspace, String conceptIndex);
-
-    /**
-     * Removes all jobs from the keyspace
-     *
-     * @param keyspace The keyspace to purge of all jobs
-     */
-    void clearAllJobs(String keyspace);
 }

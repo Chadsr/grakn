@@ -45,9 +45,9 @@ public class RelationTypeTest extends GraphTestBase{
         role2 = graknGraph.putRoleType("role2");
         role3 = graknGraph.putRoleType("role3");
 
-        relationType.hasRole(role1);
-        relationType.hasRole(role2);
-        relationType.hasRole(role3);
+        relationType.relates(role1);
+        relationType.relates(role2);
+        relationType.relates(role3);
     }
 
     @Test
@@ -62,14 +62,14 @@ public class RelationTypeTest extends GraphTestBase{
         RoleType original = graknGraph.putRoleType("Role Type");
 
         expectedException.expect(RuntimeException.class);
-        expectedException.expectMessage(ID_ALREADY_TAKEN.getMessage(original.getName(), original.toString()));
+        expectedException.expectMessage(ID_ALREADY_TAKEN.getMessage(original.getLabel(), original.toString()));
 
-        graknGraph.putRelationType(original.getName());
+        graknGraph.putRelationType(original.getLabel());
     }
 
     @Test
     public void testGetRoles() throws Exception {
-        Collection<RoleType> roles = relationType.hasRoles();
+        Collection<RoleType> roles = relationType.relates();
         assertEquals(3, roles.size());
         assertTrue(roles.contains(role1));
         assertTrue(roles.contains(role2));
@@ -83,14 +83,14 @@ public class RelationTypeTest extends GraphTestBase{
         RoleType c3 = graknGraph.putRoleType("c3");
         assertTrue(c2.relationTypes().isEmpty());
 
-        c1.hasRole(c2);
-        c1.hasRole(c3);
-        assertTrue(c1.hasRoles().contains(c2));
-        assertTrue(c1.hasRoles().contains(c3));
+        c1.relates(c2);
+        c1.relates(c3);
+        assertTrue(c1.relates().contains(c2));
+        assertTrue(c1.relates().contains(c3));
 
-        c1.deleteHasRole(c2);
-        assertFalse(c1.hasRoles().contains(c2));
-        assertTrue(c1.hasRoles().contains(c3));
+        c1.deleteRelates(c2);
+        assertFalse(c1.relates().contains(c2));
+        assertTrue(c1.relates().contains(c3));
     }
 
 

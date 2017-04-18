@@ -19,14 +19,15 @@
 package ai.grakn.test.graql.analytics;
 
 import ai.grakn.GraknGraph;
-import ai.grakn.GraknGraphFactory;
+import ai.grakn.GraknSession;
+import ai.grakn.GraknTxType;
 import ai.grakn.concept.Entity;
 import ai.grakn.concept.EntityType;
 import ai.grakn.concept.RelationType;
 import ai.grakn.concept.Resource;
 import ai.grakn.concept.ResourceType;
 import ai.grakn.concept.RoleType;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 import ai.grakn.exception.GraknValidationException;
 import ai.grakn.test.EngineContext;
 import ai.grakn.util.Schema;
@@ -49,7 +50,7 @@ public class AnalyticsTest {
 
     @ClassRule
     public static final EngineContext context = EngineContext.startInMemoryServer();
-    private GraknGraphFactory factory;
+    private GraknSession factory;
 
     private static final String thing = "thing";
     private static final String anotherThing = "anotherThing";
@@ -75,19 +76,19 @@ public class AnalyticsTest {
         // TODO: Fix on TinkerGraphComputer
         assumeFalse(usingTinker());
 
-        try (GraknGraph graph = factory.getGraph()) {
-            TypeName resourceTypeName = TypeName.of("degree");
-            ResourceType<Long> degree = graph.putResourceType(resourceTypeName, ResourceType.DataType.LONG);
+        try (GraknGraph graph = factory.open(GraknTxType.WRITE)) {
+            TypeLabel resourceTypeLabel = TypeLabel.of("degree");
+            ResourceType<Long> degree = graph.putResourceType(resourceTypeLabel, ResourceType.DataType.LONG);
             EntityType thing = graph.putEntityType("thing");
-            thing.hasResource(degree);
+            thing.resource(degree);
 
             Entity thisThing = thing.addEntity();
             Resource thisResource = degree.putResource(1L);
-            thisThing.hasResource(thisResource);
-            graph.commitOnClose();
+            thisThing.resource(thisResource);
+            graph.commit();
         }
 
-        try (GraknGraph graph = factory.getGraph()) {
+        try (GraknGraph graph = factory.open(GraknTxType.WRITE)) {
             Map<Long, Set<String>> degrees;
             degrees = graph.graql().compute().degree().of("thing").in("thing", "degree").execute();
             assertEquals(1, degrees.size());
@@ -104,26 +105,28 @@ public class AnalyticsTest {
         // TODO: Fix on TinkerGraphComputer
         assumeFalse(usingTinker());
 
-        try (GraknGraph graph = factory.getGraph()) {
+        try (GraknGraph graph = factory.open(GraknTxType.WRITE)) {
             // make slightly odd graph
-            TypeName resourceTypeId = TypeName.of("degree");
+            TypeLabel resourceTypeId = TypeLabel.of("degree");
             EntityType thing = graph.putEntityType("thing");
 
             graph.putResourceType(resourceTypeId, ResourceType.DataType.LONG);
-            RoleType degreeOwner = graph.putRoleType(Schema.Resource.HAS_RESOURCE_OWNER.getName(resourceTypeId));
-            RoleType degreeValue = graph.putRoleType(Schema.Resource.HAS_RESOURCE_VALUE.getName(resourceTypeId));
-            RelationType relationType = graph.putRelationType(Schema.Resource.HAS_RESOURCE.getName(resourceTypeId))
-                    .hasRole(degreeOwner)
-                    .hasRole(degreeValue);
-            thing.playsRole(degreeOwner);
+            RoleType degreeOwner = graph.putRoleType(Schema.ImplicitType.HAS_OWNER.getLabel(resourceTypeId));
+            RoleType degreeValue = graph.putRoleType(Schema.ImplicitType.HAS_VALUE.getLabel(resourceTypeId));
+            RelationType relationType = graph.putRelationType(Schema.ImplicitType.HAS.getLabel(resourceTypeId))
+                    .relates(degreeOwner)
+                    .relates(degreeValue);
+            thing.plays(degreeOwner);
 
             Entity thisThing = thing.addEntity();
-            relationType.addRelation().putRolePlayer(degreeOwner, thisThing);
-            graph.commitOnClose();
+            relationType.addRelation().addRolePlayer(degreeOwner, thisThing);
+
+            graph.commit();
+
         }
 
         // the null role-player caused analytics to fail at some stage
-        try (GraknGraph graph = factory.getGraph()) {
+        try (GraknGraph graph = factory.open(GraknTxType.WRITE)) {
             graph.graql().compute().degree().execute();
         } catch (RuntimeException e) {
             e.printStackTrace();
@@ -132,7 +135,7 @@ public class AnalyticsTest {
     }
 
     @Test
-    public void testConcurrentJobs() {
+    public void testConcurrentAnalyticsJobsBySubmittingGraqlComputeQueries() {
         // TODO: Fix on TinkerGraphComputer
         assumeFalse(usingTinker());
 
@@ -144,11 +147,15 @@ public class AnalyticsTest {
         queryList.add("compute degrees;");
         queryList.add("compute path from \"" + entityId1 + "\" to \"" + entityId4 + "\";");
 
-        queryList.parallelStream().forEach(query -> factory.getGraph().graql().parse(query).execute());
+        queryList.parallelStream().forEach(query -> {
+            try (GraknGraph graph = factory.open(GraknTxType.WRITE)) {
+                graph.graql().parse(query).execute();
+            }
+        });
     }
 
     private void addOntologyAndEntities() throws GraknValidationException {
-        try (GraknGraph graph = factory.getGraph()) {
+        try (GraknGraph graph = factory.open(GraknTxType.WRITE)) {
             EntityType entityType1 = graph.putEntityType(thing);
             EntityType entityType2 = graph.putEntityType(anotherThing);
 
@@ -164,18 +171,18 @@ public class AnalyticsTest {
 
             RoleType role1 = graph.putRoleType("role1");
             RoleType role2 = graph.putRoleType("role2");
-            entityType1.playsRole(role1).playsRole(role2);
-            entityType2.playsRole(role1).playsRole(role2);
-            RelationType relationType = graph.putRelationType(related).hasRole(role1).hasRole(role2);
+            entityType1.plays(role1).plays(role2);
+            entityType2.plays(role1).plays(role2);
+            RelationType relationType = graph.putRelationType(related).relates(role1).relates(role2);
 
             relationId12 = relationType.addRelation()
-                    .putRolePlayer(role1, entity1)
-                    .putRolePlayer(role2, entity2).getId().getValue();
+                    .addRolePlayer(role1, entity1)
+                    .addRolePlayer(role2, entity2).getId().getValue();
             relationId24 = relationType.addRelation()
-                    .putRolePlayer(role1, entity2)
-                    .putRolePlayer(role2, entity4).getId().getValue();
+                    .addRolePlayer(role1, entity2)
+                    .addRolePlayer(role2, entity4).getId().getValue();
 
-            graph.commitOnClose();
+            graph.commit();
         }
     }
 }

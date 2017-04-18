@@ -61,13 +61,8 @@ public class OrientDBInternalFactory extends AbstractInternalFactory<GraknOrient
     }
 
     @Override
-    boolean isClosed(OrientGraph innerGraph) {
-        return innerGraph.isClosed();
-    }
-
-    @Override
     GraknOrientDBGraph buildGraknGraphFromTinker(OrientGraph graph, boolean batchLoading) {
-        return new GraknOrientDBGraph(graph, super.keyspace, super.engineUrl, batchLoading);
+        return new GraknOrientDBGraph(graph, super.keyspace, super.engineUrl, batchLoading, super.properties);
     }
 
     @Override
@@ -76,8 +71,9 @@ public class OrientDBInternalFactory extends AbstractInternalFactory<GraknOrient
         return configureGraph(super.keyspace, super.engineUrl);
     }
 
+    //TODO: Fix this later
     @Override
-    protected OrientGraph getGraphWithNewTransaction(OrientGraph graph) {
+    protected OrientGraph getGraphWithNewTransaction(OrientGraph graph, boolean batchloading) {
         return graph;
     }
 

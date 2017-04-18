@@ -20,7 +20,7 @@ package ai.grakn.graql.internal.pattern;
 
 import ai.grakn.concept.ConceptId;
 import ai.grakn.concept.ResourceType;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 import ai.grakn.graql.Graql;
 import ai.grakn.graql.Pattern;
 import ai.grakn.graql.ValuePredicate;
@@ -35,16 +35,15 @@ import ai.grakn.graql.admin.VarProperty;
 import ai.grakn.graql.internal.pattern.property.DataTypeProperty;
 import ai.grakn.graql.internal.pattern.property.HasResourceProperty;
 import ai.grakn.graql.internal.pattern.property.HasResourceTypeProperty;
-import ai.grakn.graql.internal.pattern.property.HasRoleProperty;
+import ai.grakn.graql.internal.pattern.property.RelatesProperty;
 import ai.grakn.graql.internal.pattern.property.HasScopeProperty;
 import ai.grakn.graql.internal.pattern.property.IdProperty;
 import ai.grakn.graql.internal.pattern.property.IsAbstractProperty;
 import ai.grakn.graql.internal.pattern.property.IsaProperty;
 import ai.grakn.graql.internal.pattern.property.LhsProperty;
-import ai.grakn.graql.internal.pattern.property.NameProperty;
+import ai.grakn.graql.internal.pattern.property.LabelProperty;
 import ai.grakn.graql.internal.pattern.property.NeqProperty;
 import ai.grakn.graql.internal.pattern.property.PlaysProperty;
-import ai.grakn.graql.internal.pattern.property.PlaysRoleProperty;
 import ai.grakn.graql.internal.pattern.property.RegexProperty;
 import ai.grakn.graql.internal.pattern.property.RelationProperty;
 import ai.grakn.graql.internal.pattern.property.RhsProperty;
@@ -57,9 +56,10 @@ import com.google.common.collect.ImmutableMultiset;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.Stack;
@@ -128,28 +128,23 @@ class VarImpl implements VarAdmin {
     }
 
     @Override
-    public Var name(String name) {
-        return name(TypeName.of(name));
+    public Var label(String label) {
+        return label(TypeLabel.of(label));
     }
 
     @Override
-    public Var name(TypeName name) {
-        return addProperty(new NameProperty(name));
+    public Var label(TypeLabel label) {
+        return addProperty(new LabelProperty(label));
     }
 
     @Override
-    public Var value(Object value) {
-        return value(Graql.eq(value));
+    public Var val(Object value) {
+        return val(Graql.eq(value));
     }
 
     @Override
-    public Var value(ValuePredicate predicate) {
+    public Var val(ValuePredicate predicate) {
         return addProperty(new ValueProperty(predicate.admin()));
-    }
-
-    @Override
-    public Var has(Var var) {
-        return addProperty(HasResourceProperty.of(var.admin()));
     }
 
     @Override
@@ -159,22 +154,22 @@ class VarImpl implements VarAdmin {
 
     @Override
     public Var has(String type, ValuePredicate predicate) {
-        return has(type, Graql.var().value(predicate));
+        return has(type, Graql.var().val(predicate));
     }
 
     @Override
     public Var has(String type, Var var) {
-        return has(TypeName.of(type), var);
+        return has(TypeLabel.of(type), var);
     }
 
     @Override
-    public Var has(TypeName type, Var var) {
+    public Var has(TypeLabel type, Var var) {
         return addProperty(HasResourceProperty.of(type, var.admin()));
     }
 
     @Override
     public Var isa(String type) {
-        return isa(Graql.name(type));
+        return isa(Graql.label(type));
     }
 
     @Override
@@ -184,7 +179,7 @@ class VarImpl implements VarAdmin {
 
     @Override
     public Var sub(String type) {
-        return sub(Graql.name(type));
+        return sub(Graql.label(type));
     }
 
     @Override
@@ -193,23 +188,23 @@ class VarImpl implements VarAdmin {
     }
 
     @Override
-    public Var hasRole(String type) {
-        return hasRole(Graql.name(type));
+    public Var relates(String type) {
+        return relates(Graql.label(type));
     }
 
     @Override
-    public Var hasRole(Var type) {
-        return addProperty(new HasRoleProperty(type.admin()));
+    public Var relates(Var type) {
+        return addProperty(new RelatesProperty(type.admin()));
     }
 
     @Override
-    public Var playsRole(String type) {
-        return playsRole(Graql.name(type));
+    public Var plays(String type) {
+        return plays(Graql.label(type));
     }
 
     @Override
-    public Var playsRole(Var type) {
-        return addProperty(new PlaysRoleProperty(type.admin(), false));
+    public Var plays(Var type) {
+        return addProperty(new PlaysProperty(type.admin(), false));
     }
 
     @Override
@@ -218,22 +213,22 @@ class VarImpl implements VarAdmin {
     }
 
     @Override
-    public Var hasResource(String type) {
-        return hasResource(Graql.name(type));
+    public Var has(String type) {
+        return has(Graql.label(type));
     }
 
     @Override
-    public Var hasResource(Var type) {
+    public Var has(Var type) {
         return addProperty(new HasResourceTypeProperty(type.admin(), false));
     }
 
     @Override
-    public Var hasKey(String type) {
-        return hasKey(Graql.var().name(type));
+    public Var key(String type) {
+        return key(Graql.var().label(type));
     }
 
     @Override
-    public Var hasKey(Var type) {
+    public Var key(Var type) {
         return addProperty(new HasResourceTypeProperty(type.admin(), true));
     }
 
@@ -249,7 +244,7 @@ class VarImpl implements VarAdmin {
 
     @Override
     public Var rel(String roletype, String roleplayer) {
-        return rel(Graql.name(roletype), Graql.var(roleplayer));
+        return rel(Graql.label(roletype), Graql.var(roleplayer));
     }
 
     @Override
@@ -259,22 +254,12 @@ class VarImpl implements VarAdmin {
 
     @Override
     public Var rel(String roletype, Var roleplayer) {
-        return rel(Graql.name(roletype), roleplayer);
+        return rel(Graql.label(roletype), roleplayer);
     }
 
     @Override
     public Var rel(Var roletype, Var roleplayer) {
         return addCasting(RelationPlayerImpl.of(roletype.admin(), roleplayer.admin()));
-    }
-
-    @Override
-    public Var plays(String roleType) {
-        return plays(Graql.name(roleType));
-    }
-
-    @Override
-    public Var plays(Var roleType) {
-        return addProperty(new PlaysProperty(roleType.admin()));
     }
 
     @Override
@@ -328,8 +313,8 @@ class VarImpl implements VarAdmin {
     }
 
     @Override
-    public Optional<TypeName> getTypeName() {
-        return getProperty(NameProperty.class).map(NameProperty::getNameValue);
+    public Optional<TypeLabel> getTypeLabel() {
+        return getProperty(LabelProperty.class).map(LabelProperty::getLabelValue);
     }
 
     @Override
@@ -348,7 +333,7 @@ class VarImpl implements VarAdmin {
         if (userDefinedName) {
             return name.toString();
         } else {
-            return getTypeName().map(StringConverter::typeNameToString).orElse("'" + toString() + "'");
+            return getTypeLabel().map(StringConverter::typeLabelToString).orElse("'" + toString() + "'");
         }
     }
 
@@ -386,9 +371,9 @@ class VarImpl implements VarAdmin {
     }
 
     @Override
-    public Set<VarAdmin> getInnerVars() {
+    public Collection<VarAdmin> getInnerVars() {
         Stack<VarAdmin> newVars = new Stack<>();
-        Set<VarAdmin> vars = new HashSet<>();
+        List<VarAdmin> vars = new ArrayList<>();
 
         newVars.add(this);
 
@@ -402,9 +387,9 @@ class VarImpl implements VarAdmin {
     }
 
     @Override
-    public Set<VarAdmin> getImplicitInnerVars() {
+    public Collection<VarAdmin> getImplicitInnerVars() {
         Stack<VarAdmin> newVars = new Stack<>();
-        Set<VarAdmin> vars = new HashSet<>();
+        List<VarAdmin> vars = new ArrayList<>();
 
         newVars.add(this);
 
@@ -418,16 +403,16 @@ class VarImpl implements VarAdmin {
     }
 
     @Override
-    public Set<TypeName> getTypeNames() {
+    public Set<TypeLabel> getTypeLabels() {
         return getProperties()
                 .flatMap(VarProperty::getTypes)
-                .map(VarAdmin::getTypeName).flatMap(CommonUtil::optionalToStream)
+                .map(VarAdmin::getTypeLabel).flatMap(CommonUtil::optionalToStream)
                 .collect(toSet());
     }
 
     @Override
     public String toString() {
-        Set<VarAdmin> innerVars = getInnerVars();
+        Collection<VarAdmin> innerVars = getInnerVars();
         innerVars.remove(this);
         getProperties(HasResourceProperty.class)
                 .map(HasResourceProperty::getResource)
@@ -473,7 +458,7 @@ class VarImpl implements VarAdmin {
     }
 
     private static boolean invalidInnerVariable(VarAdmin var) {
-        return var.getProperties().anyMatch(p -> !(p instanceof NameProperty));
+        return var.getProperties().anyMatch(p -> !(p instanceof LabelProperty));
     }
 
     private VarImpl addProperty(VarProperty property) {
@@ -504,6 +489,11 @@ class VarImpl implements VarAdmin {
         // a disjunction containing only one option
         Conjunction<VarAdmin> conjunction = Patterns.conjunction(Collections.singleton(this));
         return Patterns.disjunction(Collections.singleton(conjunction));
+    }
+
+    @Override
+    public Set<VarName> commonVarNames() {
+        return getInnerVars().stream().filter(VarAdmin::isUserDefinedName).map(VarAdmin::getVarName).collect(toSet());
     }
 
     @Override

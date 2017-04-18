@@ -18,6 +18,8 @@
 
 package ai.grakn.concept;
 
+import ai.grakn.exception.ConceptException;
+
 import java.util.Collection;
 
 /**
@@ -41,51 +43,76 @@ import java.util.Collection;
  */
 public interface Type extends Concept {
     //------------------------------------- Modifiers ----------------------------------
+    // TODO: Describe behaviour when setting a type with direct instances as abstract
     /**
      * Sets the Entity Type to be abstract - which prevents it from having any instances.
      *
      * @param isAbstract  Specifies if the concept is to be abstract (true) or not (false).
      * @return The concept itself
+     *
+     * @throws ConceptException if this is a meta-type
      */
-    Type setAbstract(Boolean isAbstract);
+    Type setAbstract(Boolean isAbstract) throws ConceptException;
 
     /**
      *
      * @param roleType The Role Type which the instances of this Type are allowed to play.
      * @return The Type itself.
+     *
+     * @throws ConceptException if this is a meta-type
      */
-    Type playsRole(RoleType roleType);
+    Type plays(RoleType roleType) throws ConceptException;
 
     /**
      * Creates a RelationType which allows this type and a resource type to be linked in a strictly one-to-one mapping.
      *
      * @param resourceType The resource type which instances of this type should be allowed to play.
-     * @return The resulting relation type which allows instances of this type to have relations with the provided resourceType.
+     * @return The Type itself.
+     *
+     * @throws ConceptException if this is a meta-type
      */
-    RelationType key(ResourceType resourceType);
+    Type key(ResourceType resourceType) throws ConceptException;
 
     /**
      * Creates a RelationType which allows this type and a resource type to be linked.
      *
      * @param resourceType The resource type which instances of this type should be allowed to play.
-     * @return The resulting relation type which allows instances of this type to have relations with the provided resourceType.
+     * @return The Type itself.
+     *
+     * @throws ConceptException if this is a meta-type
      */
-    RelationType hasResource(ResourceType resourceType);
+     Type resource(ResourceType resourceType) throws ConceptException;
+
+    /**
+     * Classifies the type to a specific scope. This allows you to optionally categorise types.
+     *
+     * @param scope The category of this Type
+     * @return The Type itself.
+     */
+    Type scope(Instance scope);
+
+    /**
+     * Delete the scope specified.
+     *
+     * @param scope The Instances that is currently scoping this Type.
+     * @return The Type itself
+     */
+    Type deleteScope(Instance scope);
 
     //------------------------------------- Accessors ---------------------------------
 
     /**
-     * Returns the name of this Type.
+     * Returns the unique label of this Type.
      *
-     * @return The name of this type
+     * @return The unique label of this type
      */
-    TypeName getName();
+    TypeLabel getLabel();
 
     /**
      *
-     * @return A list of Role Types which instances of this Type can play.
+     * @return A list of Role Types which instances of this Type can indirectly play.
      */
-    Collection<RoleType> playsRoles();
+    Collection<RoleType> plays();
 
     /**
      *
@@ -95,19 +122,31 @@ public interface Type extends Concept {
 
     /**
      *
-     * @return The super of this Type
+     * @return The resource types which this type is linked with as a key.
+     */
+    Collection<ResourceType> keys();
+
+    /**
+     *
+     * @return The direct super of this Type
      */
     Type superType();
 
     /**
+     * Get all indirect sub-types of this type.
      *
-     * @return All the sub classes of this Type
+     * The indirect sub-types are the type itself and all indirect sub-types of direct sub-types.
+     *
+     * @return All the indirect sub-types of this Type
      */
     Collection<? extends Type> subTypes();
 
     /**
+     * Get all indirect instances of this type.
      *
-     * @return All the instances of this type.
+     * The indirect instances are the direct instances and all indirect instances of direct sub-types.
+     *
+     * @return All the indirect instances of this type.
      */
     Collection<? extends Instance> instances();
 
@@ -125,7 +164,7 @@ public interface Type extends Concept {
      *
      * By default, types are not implicit.
      *
-     * @return returns true if the type was created implicitly through {@link #hasResource}
+     * @return returns true if the type was created implicitly through {@link #resource}
      */
     Boolean isImplicit();
 
@@ -145,13 +184,20 @@ public interface Type extends Concept {
      */
     Collection<Rule> getRulesOfConclusion();
 
+    /**
+     * Retrieve a list of the Instances that scope this Type.
+     *
+     * @return A list of the Instances that scope this Type.
+     */
+    Collection<Instance> scopes();
+
     //------------------------------------- Other ----------------------------------
     /**
      *
      * @param roleType The Role Type which the instances of this Type should no longer be allowed to play.
      * @return The Type itself.
      */
-    Type deletePlaysRole(RoleType roleType);
+    Type deletePlays(RoleType roleType);
 
     /**
      *

@@ -20,7 +20,8 @@ package ai.grakn.test.engine.postprocessing;
 
 import ai.grakn.Grakn;
 import ai.grakn.GraknGraph;
-import ai.grakn.GraknGraphFactory;
+import ai.grakn.GraknSession;
+import ai.grakn.GraknTxType;
 import ai.grakn.concept.ConceptId;
 import ai.grakn.concept.EntityType;
 import ai.grakn.concept.Instance;
@@ -29,9 +30,10 @@ import ai.grakn.concept.RelationType;
 import ai.grakn.concept.Resource;
 import ai.grakn.concept.ResourceType;
 import ai.grakn.concept.RoleType;
-import ai.grakn.engine.postprocessing.EngineCache;
+import ai.grakn.engine.cache.EngineCacheProvider;
 import ai.grakn.engine.postprocessing.PostProcessing;
 import ai.grakn.exception.GraknValidationException;
+import ai.grakn.graph.admin.ConceptCache;
 import ai.grakn.graph.internal.AbstractGraknGraph;
 import ai.grakn.test.EngineContext;
 import ai.grakn.util.Schema;
@@ -39,20 +41,26 @@ import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.apache.tinkerpop.gremlin.structure.Edge;
 import org.apache.tinkerpop.gremlin.structure.Graph;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
-import org.junit.*;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.ClassRule;
+import org.junit.Test;
 
+import static ai.grakn.test.GraknTestEnv.usingTinker;
+import static ai.grakn.test.engine.postprocessing.PostProcessingTestUtils.createDuplicateResource;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assume.assumeTrue;
-import static ai.grakn.test.GraknTestEnv.*;
 
 public class PostProcessingTest {
     private PostProcessing postProcessing = PostProcessing.getInstance();
-    private EngineCache cache = EngineCache.getInstance();
+    private ConceptCache cache = EngineCacheProvider.getCache();
 
     private GraknGraph graph;
 
     @ClassRule
-    public static final EngineContext engine = EngineContext.startMultiQueueServer();
+    public static final EngineContext engine = EngineContext.startInMemoryServer();
 
     @BeforeClass
     public static void onlyRunOnTinker(){
@@ -61,13 +69,15 @@ public class PostProcessingTest {
 
     @Before
     public void setUp() throws Exception {
-        graph = engine.factoryWithNewKeyspace().getGraph();
+        EngineCacheProvider.getCache().getKeyspaces().forEach(k -> EngineCacheProvider.getCache().clearAllJobs(k));
+        graph = engine.factoryWithNewKeyspace().open(GraknTxType.WRITE);
     }
 
     @After
     public void takeDown() throws InterruptedException {
         cache.getCastingJobs(graph.getKeyspace()).clear();
         cache.getResourceJobs(graph.getKeyspace()).clear();
+        graph.close();
     }
 
     @Test
@@ -75,11 +85,10 @@ public class PostProcessingTest {
         //Create Scenario
         RoleType roleType1 = graph.putRoleType("role 1");
         RoleType roleType2 = graph.putRoleType("role 2");
-        graph.putRelationType("rel type").hasRole(roleType1).hasRole(roleType2);
-        graph.putEntityType("thing").playsRole(roleType1).playsRole(roleType2);
+        graph.putRelationType("rel type").relates(roleType1).relates(roleType2);
+        graph.putEntityType("thing").plays(roleType1).plays(roleType2);
 
-        GraknGraphFactory factory = Grakn.factory(Grakn.DEFAULT_URI, graph.getKeyspace());
-        graph = factory.getGraph();
+        GraknSession factory = Grakn.session(Grakn.DEFAULT_URI, graph.getKeyspace());
         roleType1 = graph.getRoleType("role 1");
         roleType2 = graph.getRoleType("role 2");
         RelationType relationType = graph.getRelationType("rel type");
@@ -90,7 +99,7 @@ public class PostProcessingTest {
         Instance instance3 = thing.addEntity();
         Instance instance4 = thing.addEntity();
 
-        relationType.addRelation().putRolePlayer(roleType1, instance1).putRolePlayer(roleType2, instance2);
+        relationType.addRelation().addRolePlayer(roleType1, instance1).addRolePlayer(roleType2, instance2);
 
         //Record Needed Ids
         ConceptId relationTypeId = relationType.getId();
@@ -100,9 +109,8 @@ public class PostProcessingTest {
         ConceptId otherInstanceId3 = instance3.getId();
         ConceptId otherInstanceId4 = instance4.getId();
 
-        graph.commitOnClose();
-        graph.close();
-        graph = factory.getGraph();
+        graph.commit();
+        graph = factory.open(GraknTxType.WRITE);
 
         //Check Number of castings is as expected
         Assert.assertEquals(2, ((AbstractGraknGraph) this.graph).getTinkerPopGraph().traversal().V().hasLabel(Schema.BaseType.CASTING.name()).toList().size());
@@ -130,14 +138,14 @@ public class PostProcessingTest {
         RelationType relationType = graph.getConcept(relationTypeId);
         Instance otherInstance = graph.getConcept(otherInstanceId);
         RoleType otherRoleType = graph.getConcept(otherRoleTypeId);
-        Relation relation = relationType.addRelation().putRolePlayer(otherRoleType, otherInstance);
+        Relation relation = relationType.addRelation().addRolePlayer(otherRoleType, otherInstance);
         ConceptId relationId = relation.getId();
 
         Graph rawGraph = ((AbstractGraknGraph) this.graph).getTinkerPopGraph();
 
         //Get Needed Vertices
-        Vertex mainRoleTypeVertex = rawGraph.traversal().V().
-                hasId(mainRoleTypeId.getValue()).next();
+        Vertex mainRoleTypeVertexShard = rawGraph.traversal().V().
+                hasId(mainRoleTypeId.getValue()).in(Schema.EdgeLabel.SHARD.getLabel()).next();
 
         Vertex relationVertex = rawGraph.traversal().V().
                 hasId(relationId.getValue()).next();
@@ -145,7 +153,7 @@ public class PostProcessingTest {
         Vertex mainInstanceVertex = rawGraph.traversal().V().
                 hasId(mainInstanceId.getValue()).next();
 
-        Vertex otherCasting = mainRoleTypeVertex.edges(Direction.IN, Schema.EdgeLabel.ISA.getLabel()).next().outVertex();
+        Vertex otherCasting = mainRoleTypeVertexShard.edges(Direction.IN, Schema.EdgeLabel.ISA.getLabel()).next().outVertex();
 
         //Create Fake Casting
         Vertex castingVertex = rawGraph.addVertex(Schema.BaseType.CASTING.name());
@@ -153,13 +161,13 @@ public class PostProcessingTest {
         castingVertex.property(Schema.ConceptProperty.ID.name(), castingVertex.id().toString());
         castingVertex.property(Schema.ConceptProperty.INDEX.name(), otherCasting.value(Schema.ConceptProperty.INDEX.name()));
 
-        castingVertex.addEdge(Schema.EdgeLabel.ISA.getLabel(), mainRoleTypeVertex);
+        castingVertex.addEdge(Schema.EdgeLabel.ISA.getLabel(), mainRoleTypeVertexShard);
 
         Edge edge = castingVertex.addEdge(Schema.EdgeLabel.ROLE_PLAYER.getLabel(), mainInstanceVertex);
-        edge.property(Schema.EdgeProperty.ROLE_TYPE.name(), mainRoleTypeId);
+        edge.property(Schema.EdgeProperty.ROLE_TYPE_LABEL.name(), mainRoleTypeId);
 
         edge = relationVertex.addEdge(Schema.EdgeLabel.CASTING.getLabel(), castingVertex);
-        edge.property(Schema.EdgeProperty.ROLE_TYPE.name(), mainRoleTypeId);
+        edge.property(Schema.EdgeProperty.ROLE_TYPE_LABEL.name(), mainRoleTypeId);
 
         cache.addJobCasting(graph.getKeyspace(), castingVertex.value(Schema.ConceptProperty.INDEX.name()).toString(), ConceptId.of(castingVertex.id().toString()));
     }
@@ -172,26 +180,23 @@ public class PostProcessingTest {
         //ExecutorService pool = Executors.newFixedThreadPool(10);
 
         //Create Graph With Duplicate Resources
-        GraknGraphFactory factory = Grakn.factory(Grakn.DEFAULT_URI, keyspace);
-        GraknGraph graph = factory.getGraph();
-        graph.putResourceType(sample, ResourceType.DataType.STRING);
+        GraknSession factory = Grakn.session(Grakn.DEFAULT_URI, keyspace);
+        GraknGraph graph = factory.open(GraknTxType.WRITE);
+        ResourceType<String> resourceType = graph.putResourceType(sample, ResourceType.DataType.STRING);
 
-        graph = factory.getGraph();
-        ResourceType<String> resourceType = graph.getResourceType(sample);
 
         Resource<String> resource = resourceType.putResource(value);
-        graph.commitOnClose();
-        graph.close();
-        graph = factory.getGraph();
+        graph.commit();
+        graph = factory.open(GraknTxType.WRITE);
 
         assertEquals(1, resourceType.instances().size());
         waitForCache(false, keyspace, 1);
 
         //Check duplicates have been created
-        createDuplicateResource(graph, resourceType, resource);
-        createDuplicateResource(graph, resourceType, resource);
-        createDuplicateResource(graph, resourceType, resource);
-        createDuplicateResource(graph, resourceType, resource);
+        PostProcessingTestUtils.createDuplicateResource(graph, cache, resourceType, resource);
+        createDuplicateResource(graph, cache, resourceType, resource);
+        createDuplicateResource(graph, cache, resourceType, resource);
+        createDuplicateResource(graph, cache, resourceType, resource);
         assertEquals(5, resourceType.instances().size());
         waitForCache(false, keyspace, 5);
 
@@ -203,22 +208,6 @@ public class PostProcessingTest {
 
         //Check the cache has been cleared
         assertEquals(0, cache.getNumJobs(graph.getKeyspace()));
-    }
-    private void createDuplicateResource(GraknGraph graknGraph, ResourceType resourceType, Resource resource){
-        AbstractGraknGraph graph = (AbstractGraknGraph) graknGraph;
-        Vertex originalResource = (Vertex) graph.getTinkerTraversal()
-                .hasId(resource.getId().getValue()).next();
-        Vertex vertexResourceType = (Vertex) graph.getTinkerTraversal()
-                .hasId(resourceType.getId().getValue()).next();
-
-        Vertex resourceVertex = graph.getTinkerPopGraph().addVertex(Schema.BaseType.RESOURCE.name());
-        resourceVertex.property(Schema.ConceptProperty.INDEX.name(),originalResource.value(Schema.ConceptProperty.INDEX.name()));
-        resourceVertex.property(Schema.ConceptProperty.VALUE_STRING.name(), originalResource.value(Schema.ConceptProperty.VALUE_STRING.name()));
-        resourceVertex.property(Schema.ConceptProperty.ID.name(), resourceVertex.id().toString());
-
-        resourceVertex.addEdge(Schema.EdgeLabel.ISA.getLabel(), vertexResourceType);
-
-        cache.addJobResource(graknGraph.getKeyspace(), resourceVertex.value(Schema.ConceptProperty.INDEX.name()).toString(), ConceptId.of(resourceVertex.id().toString()));
     }
 
     private void waitForCache(boolean isCasting, String keyspace, int value) throws InterruptedException {

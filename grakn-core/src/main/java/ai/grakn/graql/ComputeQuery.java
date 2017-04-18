@@ -19,12 +19,14 @@
 package ai.grakn.graql;
 
 import ai.grakn.GraknGraph;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 
 import java.util.Collection;
 
 /**
  * A query that triggers an analytics OLAP computation on a graph.
+ *
+ * @param <T> the type of result this query will return
  *
  * @author Jason Liu
  */
@@ -38,16 +40,16 @@ public interface ComputeQuery<T> extends Query<T> {
     ComputeQuery<T> withGraph(GraknGraph graph);
 
     /**
-     * @param subTypeNames an array of types to include in the subgraph
-     * @return a ComputeQuery with the subTypeNames set
+     * @param subTypelabels an array of types to include in the subgraph
+     * @return a ComputeQuery with the subTypelabels set
      */
-    ComputeQuery<T> in(String... subTypeNames);
+    ComputeQuery<T> in(String... subTypelabels);
 
     /**
-     * @param subTypeNames a collection of types to include in the subgraph
-     * @return a ComputeQuery with the subTypeNames set
+     * @param subTypeLabels a collection of types to include in the subgraph
+     * @return a ComputeQuery with the subTypeLabels set
      */
-    ComputeQuery<T> in(Collection<TypeName> subTypeNames);
+    ComputeQuery<T> in(Collection<TypeLabel> subTypeLabels);
 
     /**
      * kill the compute query, terminate the job

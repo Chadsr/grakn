@@ -19,18 +19,25 @@
 package ai.grakn.test.engine.postprocessing;
 
 import ai.grakn.GraknGraph;
-import ai.grakn.GraknGraphFactory;
+import ai.grakn.GraknSession;
+import ai.grakn.GraknTxType;
 import ai.grakn.concept.Entity;
 import ai.grakn.concept.EntityType;
 import ai.grakn.concept.Resource;
 import ai.grakn.concept.ResourceType;
-import ai.grakn.engine.postprocessing.EngineCache;
+import ai.grakn.engine.cache.EngineCacheProvider;
 import ai.grakn.engine.postprocessing.PostProcessing;
+import ai.grakn.engine.postprocessing.PostProcessingTask;
+import ai.grakn.engine.tasks.TaskSchedule;
+import ai.grakn.engine.tasks.TaskState;
 import ai.grakn.exception.ConceptNotUniqueException;
 import ai.grakn.exception.GraknValidationException;
+import ai.grakn.graph.admin.ConceptCache;
+import ai.grakn.graph.internal.AbstractGraknGraph;
 import ai.grakn.test.EngineContext;
 import ai.grakn.util.Schema;
 import com.thinkaurelius.titan.core.SchemaViolationException;
+import mjson.Json;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.ClassRule;
@@ -45,34 +52,39 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+import static ai.grakn.engine.TaskStatus.COMPLETED;
+import static ai.grakn.engine.TaskStatus.STOPPED;
+import static ai.grakn.engine.tasks.TaskSchedule.at;
 import static ai.grakn.test.GraknTestEnv.usingTinker;
+import static ai.grakn.test.engine.tasks.BackgroundTaskTestUtils.waitForDoneStatus;
+import static java.time.Instant.now;
+import static java.util.Collections.singleton;
+import static junit.framework.TestCase.assertEquals;
 import static junit.framework.TestCase.assertFalse;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assume.assumeFalse;
 
 public class PostProcessingTestIT {
     private PostProcessing postProcessing = PostProcessing.getInstance();
-    private EngineCache cache = EngineCache.getInstance();
+    private ConceptCache cache = EngineCacheProvider.getCache();
 
-    private GraknGraphFactory factory;
+    private GraknSession factory;
     private GraknGraph graph;
 
     @ClassRule
-    public static final EngineContext engine = EngineContext.startMultiQueueServer();
+    public static final EngineContext engine = EngineContext.startInMemoryServer();
 
     @Before
     public void setUp() throws Exception {
         factory = engine.factoryWithNewKeyspace();
-        graph = factory.getGraph();
+        graph = factory.open(GraknTxType.WRITE);
     }
 
     @After
     public void takeDown() throws InterruptedException {
         cache.getCastingJobs(graph.getKeyspace()).clear();
         cache.getResourceJobs(graph.getKeyspace()).clear();
-
         graph.close();
-        factory.close();
     }
 
     @Test
@@ -80,7 +92,7 @@ public class PostProcessingTestIT {
         assumeFalse(usingTinker());
 
         int transactionSize = 50;
-        int numAttempts = 500;
+        int numAttempts = 200;
 
         //Resource Variables
         int numResTypes = 100;
@@ -104,16 +116,15 @@ public class PostProcessingTestIT {
         for(int i = 0; i < numResTypes; i ++){
             ResourceType<Integer> rt = graph.putResourceType("res" + i, ResourceType.DataType.INTEGER);
             for(int j = 0; j < numEntTypes; j ++){
-                graph.getEntityType("ent" + j).hasResource(rt);
+                graph.getEntityType("ent" + j).resource(rt);
             }
         }
-        graph.commitOnClose();
-        graph.close();
+        graph.commit();
 
         //Try to force duplicate resources
         for(int i = 0; i < numAttempts; i++){
             futures.add(pool.submit(() -> {
-                try(GraknGraph graph = factory.getGraph()){
+                try(GraknGraph graph = factory.open(GraknTxType.WRITE)){
                     Random r = new Random();
 
                     for(int j = 0; j < transactionSize; j ++) {
@@ -124,9 +135,8 @@ public class PostProcessingTestIT {
                         forceDuplicateResources(graph, resType, resValue, entType, entNum);
                     }
 
-                    graph.commitOnClose();
-
-                    Thread.sleep((long) Math.floor(Math.random() * 5000));
+                    Thread.sleep((long) Math.floor(Math.random() * 1000));
+                    graph.commit();
                 } catch (InterruptedException | SchemaViolationException | ConceptNotUniqueException | GraknValidationException e ) {
                     //IGNORED
                 }
@@ -137,8 +147,6 @@ public class PostProcessingTestIT {
             future.get();
         }
 
-        graph.close();
-
         //Give some time for jobs to go through REST API
         Thread.sleep(5000);
 
@@ -146,7 +154,7 @@ public class PostProcessingTestIT {
         waitForCache(graph.getKeyspace(), 2);
 
         //Check current broken state of graph
-        graph = factory.getGraph();
+        graph = factory.open(GraknTxType.WRITE);
         assertTrue("Failed at breaking graph", graphIsBroken(graph));
 
         //Force PP
@@ -155,16 +163,42 @@ public class PostProcessingTestIT {
         //Check current broken state of graph
         graph.close();
         factory.close();
-        graph = factory.getGraph();
+        graph = factory.open(GraknTxType.WRITE);
 
         assertFalse("Failed at fixing graph", graphIsBroken(graph));
+
+        //Check the resource indices are working
+        for (Object object : graph.admin().getMetaResourceType().instances()) {
+            Resource resource = (Resource) object;
+            String index = Schema.generateResourceIndex(resource.type().getLabel(), resource.getValue().toString());
+            assertEquals(resource, ((AbstractGraknGraph<?>) graph).getConcept(Schema.ConceptProperty.INDEX, index));
+        }
+    }
+
+    @Test
+    public void afterRunningPostProcessingTask_TaskMarkedAsCompleted() throws Exception {
+        TaskState task = TaskState.of(PostProcessingTask.class, getClass().getName(), TaskSchedule.now(), Json.object());
+        engine.getTaskManager().addLowPriorityTask(task);
+
+        waitForDoneStatus(engine.getTaskManager().storage(), singleton(task));
+
+        // Check that task has ran
+        assertEquals(COMPLETED, engine.getTaskManager().storage().getState(task.getId()).status());
+    }
+
+    @Test
+    public void afterStoppingPostProcessingTask_TaskMarkedAsStopped() {
+        TaskState task = TaskState.of(PostProcessingTask.class, getClass().getName(), at(now().plusSeconds(10)), Json.object());
+        engine.getTaskManager().addLowPriorityTask(task);
+        engine.getTaskManager().stopTask(task.getId());
+        assertEquals(STOPPED, engine.getTaskManager().storage().getState(task.getId()).status());
     }
 
     @SuppressWarnings({"unchecked", "SuspiciousMethodCalls"})
     private boolean graphIsBroken(GraknGraph graph){
         Collection<ResourceType<?>> resourceTypes = graph.admin().getMetaResourceType().subTypes();
         for (ResourceType<?> resourceType : resourceTypes) {
-            if(!Schema.MetaSchema.RESOURCE.getName().equals(resourceType.getName())) {
+            if(!Schema.MetaSchema.RESOURCE.getLabel().equals(resourceType.getLabel())) {
                 Set<Integer> foundValues = new HashSet<>();
                 for (Resource<?> resource : resourceType.instances()) {
                     if (foundValues.contains(resource.getValue())) {
@@ -181,7 +215,7 @@ public class PostProcessingTestIT {
     private void forceDuplicateResources(GraknGraph graph, int resourceTypeNum, int resourceValueNum, int entityTypeNum, int entityNum){
         Resource resource = graph.getResourceType("res" + resourceTypeNum).putResource(resourceValueNum);
         Entity entity = (Entity) graph.getEntityType("ent" + entityTypeNum).instances().toArray()[entityNum]; //Randomly pick an entity
-        entity.hasResource(resource);
+        entity.resource(resource);
     }
 
     private void waitForCache(String keyspace, int value) throws InterruptedException {

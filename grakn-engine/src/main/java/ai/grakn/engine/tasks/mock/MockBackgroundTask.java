@@ -20,12 +20,16 @@ package ai.grakn.engine.tasks.mock;
 
 import ai.grakn.engine.TaskId;
 import ai.grakn.engine.tasks.BackgroundTask;
+import ai.grakn.engine.tasks.TaskCheckpoint;
+import ai.grakn.engine.tasks.manager.singlequeue.SingleQueueTaskManager;
 import com.google.common.collect.ConcurrentHashMultiset;
 import com.google.common.collect.ImmutableMultiset;
 import mjson.Json;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Main task Mock class- keeps track of completed and failed tasks
@@ -34,15 +38,18 @@ import java.util.function.Consumer;
  */
 public abstract class MockBackgroundTask implements BackgroundTask {
 
+    private final static Logger LOG = LoggerFactory.getLogger(SingleQueueTaskManager.class);
+
     private static final ConcurrentHashMultiset<TaskId> COMPLETED_TASKS = ConcurrentHashMultiset.create();
     private static final ConcurrentHashMultiset<TaskId> CANCELLED_TASKS = ConcurrentHashMultiset.create();
     private static Consumer<TaskId> onTaskStart;
     private static Consumer<TaskId> onTaskFinish;
+    private static Consumer<TaskCheckpoint> onTaskResume;
 
     protected final AtomicBoolean cancelled = new AtomicBoolean(false);
     protected final Object sync = new Object();
 
-    static void addCompletedTask(TaskId taskId) {
+    private static void addCompletedTask(TaskId taskId) {
         COMPLETED_TASKS.add(taskId);
     }
 
@@ -50,7 +57,7 @@ public abstract class MockBackgroundTask implements BackgroundTask {
         return ImmutableMultiset.copyOf(COMPLETED_TASKS);
     }
 
-    static void addCancelledTask(TaskId taskId) {
+    private static void addCancelledTask(TaskId taskId) {
         CANCELLED_TASKS.add(taskId);
     }
 
@@ -62,7 +69,7 @@ public abstract class MockBackgroundTask implements BackgroundTask {
         MockBackgroundTask.onTaskStart = beforeTaskStarts;
     }
 
-    static void onTaskStart(TaskId taskId) {
+    private static void onTaskStart(TaskId taskId) {
         if (onTaskStart != null) onTaskStart.accept(taskId);
     }
 
@@ -70,8 +77,16 @@ public abstract class MockBackgroundTask implements BackgroundTask {
         MockBackgroundTask.onTaskFinish = onTaskFinish;
     }
 
-    static void onTaskFinish(TaskId taskId) {
+    private static void onTaskFinish(TaskId taskId) {
         if (onTaskFinish != null) onTaskFinish.accept(taskId);
+    }
+
+    public static void whenTaskResumes(Consumer<TaskCheckpoint> onTaskResume) {
+        MockBackgroundTask.onTaskResume = onTaskResume;
+    }
+
+    private static void onTaskResume(TaskCheckpoint checkpoint) {
+        if (onTaskResume != null) onTaskResume.accept(checkpoint);
     }
 
     public static void clearTasks() {
@@ -79,17 +94,28 @@ public abstract class MockBackgroundTask implements BackgroundTask {
         CANCELLED_TASKS.clear();
         onTaskStart = null;
         onTaskFinish = null;
+        onTaskResume = null;
     }
 
+    private TaskId id;
+
     @Override
-    public final boolean start(Consumer<String> saveCheckpoint, Json configuration) {
-        TaskId id = TaskId.of(configuration.at("id").asString());
+    public final boolean start(Consumer<TaskCheckpoint> saveCheckpoint, Json configuration) {
+        id = TaskId.of(configuration.at("id").asString());
         onTaskStart(id);
+
+        saveCheckpoint.accept(TaskCheckpoint.of(configuration));
 
         boolean wasCancelled = cancelled.get();
 
         if (!wasCancelled) {
-            startInner(id);
+            executeStartInner(id);
+        }
+
+        // Cancelled status may have changed
+        wasCancelled = cancelled.get();
+
+        if (!wasCancelled) {
             addCompletedTask(id);
         } else {
             addCancelledTask(id);
@@ -102,6 +128,8 @@ public abstract class MockBackgroundTask implements BackgroundTask {
 
     @Override
     public final boolean stop() {
+        LOG.debug("Stopping {}", id);
+
         cancelled.set(true);
         synchronized (sync) {
             sync.notifyAll();
@@ -109,5 +137,17 @@ public abstract class MockBackgroundTask implements BackgroundTask {
         return true;
     }
 
-    protected abstract void startInner(TaskId id);
+    @Override
+    public final boolean resume(Consumer<TaskCheckpoint> saveCheckpoint, TaskCheckpoint lastCheckpoint){
+        onTaskResume(lastCheckpoint);
+
+        executeResumeInner(lastCheckpoint);
+
+        return true;
+    }
+
+    protected abstract void executeStartInner(TaskId id);
+    protected abstract void executeResumeInner(TaskCheckpoint checkpoint);
+
+
 }

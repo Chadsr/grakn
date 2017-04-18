@@ -6,22 +6,22 @@ insert
 #################################################
 
 "Person" sub entity
-    has-resource name;
+    has name;
 
 "friendA" sub role;
 "friendB" sub role;
-"Friend" sub relation, has-role friendA, has-role friendB;
-Person plays-role friendA, plays-role friendB;
+"Friend" sub relation, relates friendA, relates friendB;
+Person plays friendA, plays friendB;
 
 "parent" sub role;
 "child" sub role;
-"Parent" sub relation, has-role parent, has-role child;
-Person plays-role parent, plays-role child;
+"Parent" sub relation, relates parent, relates child;
+Person plays parent, plays child;
 
 "person" sub role;
 "ancestor-friend" sub role;
-"Ancestor-friend" sub relation, has-role person, has-role ancestor-friend;
-Person plays-role person, plays-role ancestor-friend;
+"Ancestor-friend" sub relation, relates person, relates ancestor-friend;
+Person plays person, plays ancestor-friend;
 
 "name" sub resource, datatype string;
 
@@ -46,9 +46,9 @@ $g  isa Person, has name "g";
 
 isa inference-rule,
 lhs {
-($x, $y) isa Friend;},
+(friendA: $x, friendB: $y) isa Friend;},
 rhs {
-($x, $y) isa Ancestor-friend;};
+(person: $x, ancestor-friend: $y) isa Ancestor-friend;};
 
 isa inference-rule,
 lhs {

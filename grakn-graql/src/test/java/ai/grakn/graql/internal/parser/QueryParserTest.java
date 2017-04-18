@@ -59,10 +59,10 @@ import static ai.grakn.graql.Graql.group;
 import static ai.grakn.graql.Graql.gt;
 import static ai.grakn.graql.Graql.gte;
 import static ai.grakn.graql.Graql.insert;
+import static ai.grakn.graql.Graql.label;
 import static ai.grakn.graql.Graql.lt;
 import static ai.grakn.graql.Graql.lte;
 import static ai.grakn.graql.Graql.match;
-import static ai.grakn.graql.Graql.name;
 import static ai.grakn.graql.Graql.neq;
 import static ai.grakn.graql.Graql.or;
 import static ai.grakn.graql.Graql.parse;
@@ -76,6 +76,7 @@ import static ai.grakn.graql.Graql.withoutGraph;
 import static ai.grakn.graql.Order.desc;
 import static com.google.common.collect.Lists.newArrayList;
 import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.core.AllOf.allOf;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -96,13 +97,13 @@ public class QueryParserTest {
     @Test
     public void testRelationQuery() {
         MatchQuery expected = match(
-                var("brando").value("Marl B").isa("person"),
+                var("brando").val("Marl B").isa("person"),
                 var().rel("actor", "brando").rel("char").rel("production-with-cast", "prod")
         ).select("char", "prod");
 
         MatchQuery parsed = parse(
                 "match\n" +
-                        "$brando value \"Marl B\" isa person;\n" +
+                        "$brando val \"Marl B\" isa person;\n" +
                         "(actor: $brando, $char, production-with-cast: $prod);\n" +
                         "select $char, $prod;"
         );
@@ -116,19 +117,19 @@ public class QueryParserTest {
                 var("x").isa("movie").has("title", var("t")),
                 or(
                         or(
-                                var("t").value(eq("Apocalypse Now")),
-                                and(var("t").value(lt("Juno")), var("t").value(gt("Godfather")))
+                                var("t").val(eq("Apocalypse Now")),
+                                and(var("t").val(lt("Juno")), var("t").val(gt("Godfather")))
                         ),
-                        var("t").value(eq("Spy"))
+                        var("t").val(eq("Spy"))
                 ),
-                var("t").value(neq("Apocalypse Now"))
+                var("t").val(neq("Apocalypse Now"))
         );
 
         MatchQuery parsed = parse(
                 "match\n" +
                 "$x isa movie, has title $t;\n" +
-                "$t value = \"Apocalypse Now\" or {$t value < 'Juno'; $t value > 'Godfather';} or $t value 'Spy';" +
-                "$t value !='Apocalypse Now';\n"
+                "$t val = \"Apocalypse Now\" or {$t val < 'Juno'; $t val > 'Godfather';} or $t val 'Spy';" +
+                "$t val !='Apocalypse Now';\n"
         );
 
         assertEquals(expected, parsed);
@@ -139,14 +140,14 @@ public class QueryParserTest {
         MatchQuery expected = match(
                 var("x").isa("movie").has("title", var("t")),
                 or(
-                    and(var("t").value(lte("Juno")), var("t").value(gte("Godfather")), var("t").value(neq("Heat"))),
-                    var("t").value("The Muppets")
+                    and(var("t").val(lte("Juno")), var("t").val(gte("Godfather")), var("t").val(neq("Heat"))),
+                    var("t").val("The Muppets")
                 )
         );
 
         MatchQuery parsed = parse(
                 "match $x isa movie, has title $t;" +
-                "{$t value <= 'Juno'; $t value >= 'Godfather'; $t value != 'Heat';} or $t value = 'The Muppets';"
+                "{$t val <= 'Juno'; $t val >= 'Godfather'; $t val != 'Heat';} or $t val = 'The Muppets';"
         );
 
         assertEquals(expected, parsed);
@@ -157,12 +158,12 @@ public class QueryParserTest {
         MatchQuery expected = match(
                 var().rel("x").rel("y"),
                 var("y").isa("person").has("name", var("n")),
-                or(var("n").value(contains("ar")), var("n").value(regex("^M.*$")))
+                or(var("n").val(contains("ar")), var("n").val(regex("^M.*$")))
         );
 
         MatchQuery parsed = parse(
                 "match ($x, $y); $y isa person, has name $n;" +
-                "$n value contains 'ar' or $n value /^M.*$/;"
+                "$n val contains 'ar' or $n val /^M.*$/;"
         );
 
         assertEquals(expected, parsed);
@@ -170,9 +171,9 @@ public class QueryParserTest {
 
     @Test
     public void testValueEqualsVariableQuery() {
-        MatchQuery expected = match(var("s1").value(var("s2")));
+        MatchQuery expected = match(var("s1").val(var("s2")));
 
-        MatchQuery parsed = parse("match $s1 value = $s2;");
+        MatchQuery parsed = parse("match $s1 val = $s2;");
 
         assertEquals(expected, parsed);
     }
@@ -234,8 +235,8 @@ public class QueryParserTest {
 
     @Test
     public void testOntologyQuery() {
-        MatchQuery expected = match(var("x").playsRole("actor")).orderBy("x");
-        MatchQuery parsed = parse("match $x plays-role actor; order by $x asc;");
+        MatchQuery expected = match(var("x").plays("actor")).orderBy("x");
+        MatchQuery parsed = parse("match $x plays actor; order by $x asc;");
         assertEquals(expected, parsed);
     }
 
@@ -251,18 +252,18 @@ public class QueryParserTest {
         MatchQuery expected = match(
                 var().rel(var("p"), "x").rel("y"),
                 var("x").isa(var("z")),
-                var("y").value("crime"),
+                var("y").val("crime"),
                 var("z").sub("production"),
-                name("has-genre").hasRole(var("p"))
+                label("has-genre").relates(var("p"))
         );
 
         MatchQuery parsed = parse(
                 "match" +
                         "($p: $x, $y);" +
                         "$x isa $z;" +
-                        "$y value 'crime';" +
+                        "$y val 'crime';" +
                         "$z sub production;" +
-                        "has-genre has-role $p;"
+                        "has-genre relates $p;"
         );
 
         assertEquals(expected, parsed);
@@ -273,13 +274,13 @@ public class QueryParserTest {
         MatchQuery expected = match(
                 var("x").isa("movie"),
                 or(
-                        and(var("y").isa("genre").value("drama"), var().rel("x").rel("y")),
-                        var("x").value("The Muppets")
+                        and(var("y").isa("genre").val("drama"), var().rel("x").rel("y")),
+                        var("x").val("The Muppets")
                 )
         );
 
         MatchQuery parsed = parse(
-                "match $x isa movie; { $y isa genre value 'drama'; ($x, $y); } or $x value 'The Muppets';"
+                "match $x isa movie; { $y isa genre val 'drama'; ($x, $y); } or $x val 'The Muppets';"
         );
 
         assertEquals(expected, parsed);
@@ -316,12 +317,12 @@ public class QueryParserTest {
     @Test
     public void testInsertOntologyQuery() {
         InsertQuery expected = insert(
-                name("pokemon").sub(Schema.MetaSchema.ENTITY.getName().getValue()),
-                name("evolution").sub(Schema.MetaSchema.RELATION.getName().getValue()),
-                name("evolves-from").sub(Schema.MetaSchema.ROLE.getName().getValue()),
-                name("evolves-to").sub(Schema.MetaSchema.ROLE.getName().getValue()),
-                name("evolution").hasRole("evolves-from").hasRole("evolves-to"),
-                name("pokemon").playsRole("evolves-from").playsRole("evolves-to").hasResource("name"),
+                label("pokemon").sub(Schema.MetaSchema.ENTITY.getLabel().getValue()),
+                label("evolution").sub(Schema.MetaSchema.RELATION.getLabel().getValue()),
+                label("evolves-from").sub(Schema.MetaSchema.ROLE.getLabel().getValue()),
+                label("evolves-to").sub(Schema.MetaSchema.ROLE.getLabel().getValue()),
+                label("evolution").relates("evolves-from").relates("evolves-to"),
+                label("pokemon").plays("evolves-from").plays("evolves-to").has("name"),
                 var("x").has("name", "Pichu").isa("pokemon"),
                 var("y").has("name", "Pikachu").isa("pokemon"),
                 var("z").has("name", "Raichu").isa("pokemon"),
@@ -333,9 +334,9 @@ public class QueryParserTest {
                 "'pokemon' sub entity;" +
                 "evolution sub relation;" +
                 "evolves-from sub role;" +
-                "type-name \"evolves-to\" sub role;" +
-                "evolution has-role evolves-from, has-role evolves-to;" +
-                "pokemon plays-role evolves-from plays-role evolves-to has-resource name;" +
+                "label \"evolves-to\" sub role;" +
+                "evolution relates evolves-from, relates evolves-to;" +
+                "pokemon plays evolves-from plays evolves-to has name;" +
                 "$x has name 'Pichu' isa pokemon;" +
                 "$y has name 'Pikachu' isa pokemon;" +
                 "$z has name 'Raichu' isa pokemon;" +
@@ -356,8 +357,8 @@ public class QueryParserTest {
     @Test
     public void testInsertIsAbstractQuery() {
         InsertQuery expected = insert(
-                name("concrete-type").sub("entity"),
-                name("abstract-type").isAbstract().sub("entity")
+                label("concrete-type").sub("entity"),
+                label("abstract-type").isAbstract().sub("entity")
         );
 
         InsertQuery parsed = parse(
@@ -377,7 +378,7 @@ public class QueryParserTest {
 
     @Test
     public void testInsertDataTypeQuery() {
-        InsertQuery expected = insert(name("my-type").sub("resource").datatype(ResourceType.DataType.LONG));
+        InsertQuery expected = insert(label("my-type").sub("resource").datatype(ResourceType.DataType.LONG));
         InsertQuery parsed = parse("insert my-type sub resource, datatype long;");
         assertEquals(expected, parsed);
     }
@@ -409,7 +410,7 @@ public class QueryParserTest {
         Pattern rhsPattern = and(parsePatterns(rhs));
 
         InsertQuery expected = insert(
-                name("my-rule-thing").sub("rule"), var().isa("my-rule-thing").lhs(lhsPattern).rhs(rhsPattern)
+                label("my-rule-thing").sub("rule"), var().isa("my-rule-thing").lhs(lhsPattern).rhs(rhsPattern)
         );
 
         InsertQuery parsed = parse(
@@ -527,13 +528,20 @@ public class QueryParserTest {
     }
 
     @Test
-    public void testBadSyntaxThrowsIllegalArgumentException() {
+    public void whenParseIncorrectSyntax_ThrowIllegalArgumentExceptionWithHelpfulError() {
         exception.expect(IllegalArgumentException.class);
         exception.expectMessage(allOf(
                 containsString("syntax error"), containsString("line 1"),
                 containsString("\nmatch $x isa "),
                 containsString("\n             ^")
         ));
+        parse("match $x isa ");
+    }
+
+    @Test
+    public void whenParseIncorrectSyntax_ErrorMessageShouldRetainWhitespace() {
+        exception.expect(IllegalArgumentException.class);
+        exception.expectMessage(not(containsString("match$xisa")));
         parse("match $x isa ");
     }
 
@@ -585,7 +593,7 @@ public class QueryParserTest {
 
     @Test
     public void testParseKey() {
-        assertEquals("match $x has-key name;", parse("match $x has-key name;").toString());
+        assertEquals("match $x key name;", parse("match $x key name;").toString());
     }
 
     @Test

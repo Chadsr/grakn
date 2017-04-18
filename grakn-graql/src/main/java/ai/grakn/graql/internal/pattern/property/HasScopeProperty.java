@@ -24,21 +24,21 @@ import ai.grakn.concept.ConceptId;
 import ai.grakn.concept.Instance;
 import ai.grakn.concept.Relation;
 import ai.grakn.graql.Graql;
+import ai.grakn.graql.VarName;
 import ai.grakn.graql.admin.Atomic;
 import ai.grakn.graql.admin.ReasonerQuery;
 import ai.grakn.graql.admin.VarAdmin;
-import ai.grakn.graql.VarName;
 import ai.grakn.graql.internal.gremlin.EquivalentFragmentSet;
-import ai.grakn.graql.internal.gremlin.fragment.Fragments;
 import ai.grakn.graql.internal.query.InsertQueryExecutor;
 import ai.grakn.graql.internal.reasoner.atom.binary.TypeAtom;
 import ai.grakn.graql.internal.reasoner.atom.predicate.IdPredicate;
-import com.google.common.collect.Sets;
+import com.google.common.collect.ImmutableSet;
 
 import java.util.Collection;
 import java.util.Set;
 import java.util.stream.Stream;
 
+import static ai.grakn.graql.internal.gremlin.sets.EquivalentFragmentSets.hasScope;
 import static ai.grakn.graql.internal.reasoner.Utility.getIdPredicate;
 
 /**
@@ -74,10 +74,7 @@ public class HasScopeProperty extends AbstractVarProperty implements NamedProper
 
     @Override
     public Collection<EquivalentFragmentSet> match(VarName start) {
-        return Sets.newHashSet(EquivalentFragmentSet.create(
-                Fragments.outHasScope(start, scope.getVarName()),
-                Fragments.inHasScope(scope.getVarName(), start)
-        ));
+        return ImmutableSet.of(hasScope(start, scope.getVarName()));
     }
 
     @Override
@@ -88,13 +85,13 @@ public class HasScopeProperty extends AbstractVarProperty implements NamedProper
     @Override
     public void insert(InsertQueryExecutor insertQueryExecutor, Concept concept) throws IllegalStateException {
         Instance scopeInstance = insertQueryExecutor.getConcept(scope).asInstance();
-        concept.asRelation().scope(scopeInstance);
+        concept.asType().scope(scopeInstance);
     }
 
     @Override
     public void delete(GraknGraph graph, Concept concept) {
         ConceptId scopeId = scope.getId().orElseThrow(() -> failDelete(this));
-        concept.asRelation().deleteScope(graph.getConcept(scopeId));
+        concept.asType().deleteScope(graph.getConcept(scopeId));
     }
 
     @Override

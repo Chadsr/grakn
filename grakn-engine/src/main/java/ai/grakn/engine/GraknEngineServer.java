@@ -19,11 +19,12 @@ package ai.grakn.engine;
 
 import ai.grakn.engine.controller.AuthController;
 import ai.grakn.engine.controller.CommitLogController;
-import ai.grakn.engine.controller.GraphFactoryController;
-import ai.grakn.engine.controller.StatusController;
+import ai.grakn.engine.controller.ConceptController;
+import ai.grakn.engine.controller.DashboardController;
+import ai.grakn.engine.controller.SystemController;
 import ai.grakn.engine.controller.TasksController;
 import ai.grakn.engine.controller.UserController;
-import ai.grakn.engine.controller.VisualiserController;
+import ai.grakn.engine.controller.GraqlController;
 import ai.grakn.engine.postprocessing.PostProcessing;
 import ai.grakn.engine.postprocessing.PostProcessingTask;
 import ai.grakn.engine.session.RemoteSession;
@@ -33,8 +34,10 @@ import ai.grakn.engine.tasks.TaskState;
 import ai.grakn.engine.util.EngineID;
 import ai.grakn.engine.util.JWTHandler;
 import ai.grakn.exception.GraknEngineServerException;
+import ai.grakn.factory.EngineGraknGraphFactory;
 import ai.grakn.util.REST;
 import mjson.Json;
+import org.apache.http.entity.ContentType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import spark.Request;
@@ -66,7 +69,7 @@ public class GraknEngineServer implements AutoCloseable {
     private static final Set<String> unauthenticatedEndPoints = new HashSet<>(Arrays.asList(
             REST.WebPath.NEW_SESSION_URI,
             REST.WebPath.REMOTE_SHELL_URI,
-            REST.WebPath.GRAPH_FACTORY_URI,
+            REST.WebPath.System.CONFIGURATION,
             REST.WebPath.IS_PASSWORD_PROTECTED_URI));
     public static final boolean isPasswordProtected = prop.getPropertyAsBool(GraknEngineConfig.PASSWORD_PROTECTED_PROPERTY);
 
@@ -79,7 +82,7 @@ public class GraknEngineServer implements AutoCloseable {
         taskManager = startTaskManager(taskManagerClass);
         this.port = port;
         startHTTP();
-        startPostprocessing();
+        startRecurringBackgroundTasks();
         printStartMessage(prop.getProperty(SERVER_HOST_NAME), prop.getProperty(GraknEngineConfig.SERVER_PORT_NUMBER), prop.getLogFilePath());
     }
 
@@ -126,12 +129,14 @@ public class GraknEngineServer implements AutoCloseable {
         configureSpark(spark, port);
 
         // Start all the controllers
-        new VisualiserController(spark);
-        new GraphFactoryController(spark);
-        new CommitLogController(spark);
-        new StatusController(spark);
+        EngineGraknGraphFactory factory = EngineGraknGraphFactory.getInstance();
+        new GraqlController(factory, spark);
+        new ConceptController(factory, spark);
+        new DashboardController(factory, spark);
+        new SystemController(spark);
         new AuthController(spark);
         new UserController(spark);
+        new CommitLogController(spark, taskManager);
         new TasksController(spark, taskManager);
 
         // This method will block until all the controllers are ready to serve requests
@@ -161,12 +166,13 @@ public class GraknEngineServer implements AutoCloseable {
         spark.exception(Exception.class,                  (e, req, res) -> handleInternalError(e, res));
     }
 
-    private void startPostprocessing(){
+    private void startRecurringBackgroundTasks(){
         // Submit a recurring post processing task
         Duration interval = Duration.ofMillis(prop.getPropertyAsInt(GraknEngineConfig.TIME_LAPSE));
         String creator = GraknEngineServer.class.getName();
+
         TaskState postprocessing = TaskState.of(PostProcessingTask.class, creator, TaskSchedule.recurring(interval), Json.object());
-        taskManager.addTask(postprocessing);
+        taskManager.addLowPriorityTask(postprocessing);
     }
 
     public void stopHTTP() {
@@ -238,6 +244,7 @@ public class GraknEngineServer implements AutoCloseable {
     private static void handleGraknServerError(Exception exception, Response response){
         response.status(((GraknEngineServerException) exception).getStatus());
         response.body(Json.object("exception", exception.getMessage()).toString());
+        response.type(ContentType.APPLICATION_JSON.getMimeType());
     }
 
     /**
@@ -248,6 +255,7 @@ public class GraknEngineServer implements AutoCloseable {
     private static void handleInternalError(Exception exception, Response response){
         response.status(500);
         response.body(Json.object("exception", exception.getMessage()).toString());
+        response.type(ContentType.APPLICATION_JSON.getMimeType());
     }
 
 

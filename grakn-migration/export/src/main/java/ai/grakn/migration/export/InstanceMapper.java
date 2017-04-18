@@ -24,12 +24,15 @@ import ai.grakn.concept.Resource;
 import ai.grakn.concept.ResourceType;
 import ai.grakn.concept.RoleType;
 import ai.grakn.concept.Rule;
+import ai.grakn.graql.Graql;
 import ai.grakn.graql.Var;
 
+import java.util.Map;
+import java.util.Set;
+
 import static ai.grakn.graql.Graql.and;
-import static ai.grakn.graql.Graql.name;
 import static ai.grakn.graql.Graql.var;
-import static ai.grakn.util.Schema.Resource.HAS_RESOURCE_VALUE;
+import static ai.grakn.util.Schema.ImplicitType.HAS_VALUE;
 
 /**
  * Map Grakn Core instance to Graql representation
@@ -59,7 +62,7 @@ public class InstanceMapper {
 
     /**
      * Map a Entity to a Var
-     * This includes mapping the instance itself, its id and any has-resource relations
+     * This includes mapping the instance itself, its id and any has relations
      * @param entity entity to be mapped
      * @return var patterns representing given instance
      */
@@ -85,7 +88,7 @@ public class InstanceMapper {
     }
 
     /**
-     * Map a Resource to a var IF it is not attached in a has-resource relation to another instance
+     * Map a Resource to a var IF it is not attached in a has relation to another instance
      * @param resource resource to be mapped
      * @return var patterns representing the given instance
      */
@@ -95,7 +98,7 @@ public class InstanceMapper {
         }
 
         Var var = base(resource);
-        var = var.value(resource.getValue());
+        var = var.val(resource.getValue());
         return var;
     }
 
@@ -120,7 +123,7 @@ public class InstanceMapper {
      */
     private static Var hasResources(Var var, Instance instance){
         for(Resource resource:instance.resources()){
-           var = var.has(resource.type().getName(), var().value(resource.getValue()));
+           var = var.has(resource.type().getLabel(), var().val(resource.getValue()));
         }
         return var;
     }
@@ -132,8 +135,11 @@ public class InstanceMapper {
      * @return var pattern with roleplayers
      */
     private static  Var roleplayers(Var var, Relation relation){
-        for(RoleType role:relation.rolePlayers().keySet()){
-            var = var.rel(name(role.getName()), relation.rolePlayers().get(role).getId().getValue());
+        for(Map.Entry<RoleType, Set<Instance>> entry:relation.allRolePlayers().entrySet()){
+            RoleType role = entry.getKey();
+            for (Instance instance : entry.getValue()) {
+                var = var.rel(Graql.label(role.getLabel()), instance.getId().getValue());
+            }
         }
         return var;
     }
@@ -144,21 +150,21 @@ public class InstanceMapper {
      * @return var patterns representing given instance
      */
     private static  Var base(Instance instance){
-        Var var = var(instance.getId().getValue()).isa(name(instance.type().getName()));
+        Var var = var(instance.getId().getValue()).isa(Graql.label(instance.type().getLabel()));
         return hasResources(var, instance);
     }
 
     /**
-     * Check if the given resource conforms to the has-resource syntax and structural requirements
+     * Check if the given resource conforms to the has syntax and structural requirements
      * @param resource resource to check
-     * @return true if the resource is target of has-resource relation
+     * @return true if the resource is target of has relation
      */
     private static boolean isHasResourceResource(Resource resource){
         ResourceType resourceType = resource.type();
 
         // TODO: Make sure this is tested
-        boolean playsRole = resourceType.playsRoles().stream().map(RoleType::getName)
-                .allMatch(c -> c.equals(HAS_RESOURCE_VALUE.getName(resourceType.getName())));
-        return !resource.ownerInstances().isEmpty() && playsRole;
+        boolean plays = resourceType.plays().stream().map(RoleType::getLabel)
+                .allMatch(c -> c.equals(HAS_VALUE.getLabel(resourceType.getLabel())));
+        return !resource.ownerInstances().isEmpty() && plays;
     }
 }

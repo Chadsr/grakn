@@ -26,13 +26,15 @@ import * as API from '../util/HALTerms';
   * Build label to show in the visualiser, based on the node type.
   */
 function buildLabel(resource) {
-  let label;
+  let label = resource[API.KEY_TYPE];
 
   switch (resource[API.KEY_BASE_TYPE]) {
     case API.ENTITY_TYPE:
+    case API.ENTITY:
       label = `${resource[API.KEY_TYPE]}: ${resource[API.KEY_ID]}`;
       break;
     case API.RELATION_TYPE:
+    case API.RELATION:
       label = `${resource[API.KEY_BASE_TYPE].substring(0, 3)}: ${resource[API.KEY_TYPE]}`;
       break;
     case API.RESOURCE_TYPE:
@@ -44,7 +46,7 @@ function buildLabel(resource) {
       break;
 
     default:
-      label = resource[API.KEY_ID];
+      label = resource[API.KEY_TYPE];
   }
 
   if (API.KEY_VALUE in resource) { label = resource[API.KEY_VALUE] || label; }
@@ -75,7 +77,7 @@ export function defaultProperties(resource) {
     type: resource[API.KEY_TYPE] || '',
     baseType: resource[API.KEY_BASE_TYPE],
     label: buildLabel(resource),
-    ontology: resource[API.KEY_LINKS][API.KEY_ONTOLOGY][0][API.KEY_HREF],
+    explore: resource[API.KEY_LINKS][API.KEY_EXPLORE][0][API.KEY_HREF],
   };
 }
 /**
@@ -107,6 +109,6 @@ export function extractResources(resource) {
 export function nodeLinks(resource) {
   const linksObject = resource[API.KEY_LINKS];
   return Object.keys(linksObject)
-        .filter(x => (x !== API.KEY_SELF && x !== API.KEY_ONTOLOGY))
+        .filter(x => (x !== API.KEY_SELF && x !== API.KEY_EXPLORE))
         .reduce((newLinksObject, key) => Object.assign({}, newLinksObject, { [key]: linksObject[key].length }), {});
 }

@@ -19,6 +19,7 @@
 package ai.grakn.factory;
 
 import ai.grakn.Grakn;
+import ai.grakn.GraknTxType;
 import ai.grakn.util.ErrorMessage;
 import org.junit.BeforeClass;
 import org.junit.Rule;
@@ -28,8 +29,6 @@ import org.junit.rules.ExpectedException;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
 import java.util.Properties;
 
 import static org.hamcrest.CoreMatchers.instanceOf;
@@ -55,21 +54,13 @@ public class FactoryBuilderTest {
         }
     }
 
-    @Test(expected=InvocationTargetException.class)
-    public void testConstructorIsPrivate() throws NoSuchMethodException, IllegalAccessException, InvocationTargetException, InstantiationException {
-        Constructor<FactoryBuilder> c = FactoryBuilder.class.getDeclaredConstructor();
-        c.setAccessible(true);
-        c.newInstance();
+    @Test
+    public void whenBuildingInMemoryFactory_ReturnTinkerFactory(){
+        assertThat(FactoryBuilder.getFactory(KEYSPACE, ENGINE_URL, TEST_PROPERTIES), instanceOf(TinkerInternalFactory.class));
     }
 
     @Test
-    public void testBuildGraknFactory(){
-        InternalFactory mgf = FactoryBuilder.getFactory(KEYSPACE, ENGINE_URL, TEST_PROPERTIES);
-        assertThat(mgf, instanceOf(TinkerInternalFactory.class));
-    }
-
-    @Test
-    public void testSingleton(){
+    public void whenBuildingFactoriesWithTheSameProperties_ReturnSameGraphs(){
         InternalFactory mgf1 = FactoryBuilder.getFactory(KEYSPACE, ENGINE_URL, TEST_PROPERTIES);
         InternalFactory mgf2 = FactoryBuilder.getFactory(KEYSPACE, ENGINE_URL, TEST_PROPERTIES);
         InternalFactory mgf3 = FactoryBuilder.getFactory("key", ENGINE_URL, TEST_PROPERTIES);
@@ -78,7 +69,7 @@ public class FactoryBuilderTest {
         assertEquals(mgf1, mgf2);
         assertEquals(mgf3, mgf4);
         assertNotEquals(mgf1, mgf3);
-        assertEquals(mgf1.getGraph(true), mgf2.getGraph(true));
-        assertNotEquals(mgf1.getGraph(true), mgf3.getGraph(true));
+
+        assertNotEquals(mgf1.open(GraknTxType.WRITE), mgf3.open(GraknTxType.WRITE));
     }
 }

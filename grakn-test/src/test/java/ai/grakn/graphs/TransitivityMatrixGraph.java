@@ -24,12 +24,13 @@ import ai.grakn.concept.EntityType;
 import ai.grakn.concept.Instance;
 import ai.grakn.concept.RelationType;
 import ai.grakn.concept.RoleType;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
+
 import java.util.function.Consumer;
 
 public class TransitivityMatrixGraph extends TestGraph {
 
-    private final static TypeName key = TypeName.of("index");
+    private final static TypeLabel key = TypeLabel.of("index");
     private final static String gqlFile = "simple-transitivity.gql";
 
     private final int n;
@@ -65,20 +66,20 @@ public class TransitivityMatrixGraph extends TestGraph {
                 aInstanceIds[i][j] = putEntity(graph, "a" + i + "," + j, aEntity, key).getId();
         
         Q.addRelation()
-                .putRolePlayer(Qfrom, aInst)
-                .putRolePlayer(Qto, graph.getConcept(aInstanceIds[0][0]));
+                .addRolePlayer(Qfrom, aInst)
+                .addRolePlayer(Qto, graph.getConcept(aInstanceIds[0][0]));
 
         for(int i = 0 ; i < n ; i++) {
             for (int j = 0; j < m ; j++) {
                 if ( i < n - 1 ) {
                     Q.addRelation()
-                            .putRolePlayer(Qfrom, graph.getConcept(aInstanceIds[i][j]))
-                            .putRolePlayer(Qto, graph.getConcept(aInstanceIds[i+1][j]));
+                            .addRolePlayer(Qfrom, graph.getConcept(aInstanceIds[i][j]))
+                            .addRolePlayer(Qto, graph.getConcept(aInstanceIds[i+1][j]));
                 }
                 if ( j < m - 1){
                     Q.addRelation()
-                            .putRolePlayer(Qfrom, graph.getConcept(aInstanceIds[i][j]))
-                            .putRolePlayer(Qto, graph.getConcept(aInstanceIds[i][j+1]));
+                            .addRolePlayer(Qfrom, graph.getConcept(aInstanceIds[i][j]))
+                            .addRolePlayer(Qto, graph.getConcept(aInstanceIds[i][j+1]));
                 }
             }
         }

@@ -5,21 +5,21 @@ insert
 #################################################
 
 "start-vertex" sub entity
-has-resource index;
+has index;
 "vertex" sub entity
-has-resource index;
+has index;
 
 "arcA" sub role;
 "arcB" sub role;
-"arc" sub relation, has-role arcA, has-role arcB;
-vertex plays-role arcA, plays-role arcB;
-start-vertex plays-role arcA, plays-role arcB;
+"arc" sub relation, relates arcA, relates arcB;
+vertex plays arcA, plays arcB;
+start-vertex plays arcA, plays arcB;
 
 "pathA" sub role;
 "pathB" sub role;
-"path" sub relation, has-role pathA, has-role pathB;
-vertex plays-role pathA, plays-role pathB;
-start-vertex plays-role pathA, plays-role pathB;
+"path" sub relation, relates pathA, relates pathB;
+vertex plays pathA, plays pathB;
+start-vertex plays pathA, plays pathB;
 
 ####################################################
 ##################RULES#############################

@@ -20,42 +20,102 @@ package ai.grakn.test.engine.controller;
 
 import ai.grakn.Grakn;
 import ai.grakn.GraknGraph;
+import ai.grakn.GraknTxType;
 import ai.grakn.concept.Entity;
 import ai.grakn.concept.EntityType;
 import ai.grakn.concept.RelationType;
 import ai.grakn.concept.Resource;
 import ai.grakn.concept.ResourceType;
 import ai.grakn.concept.RoleType;
-import ai.grakn.engine.postprocessing.EngineCache;
+import ai.grakn.engine.cache.EngineCacheProvider;
+import ai.grakn.engine.cache.EngineCacheStandAlone;
+import ai.grakn.engine.controller.CommitLogController;
+import ai.grakn.engine.controller.SystemController;
+import ai.grakn.engine.postprocessing.UpdatingInstanceCountTask;
+import ai.grakn.engine.tasks.TaskManager;
+import ai.grakn.engine.tasks.manager.StandaloneTaskManager;
+import ai.grakn.engine.util.EngineID;
 import ai.grakn.exception.GraknValidationException;
 import ai.grakn.factory.SystemKeyspace;
-import ai.grakn.test.EngineContext;
+import ai.grakn.graph.admin.ConceptCache;
 import ai.grakn.util.REST;
 import ai.grakn.util.Schema;
+import com.jayway.restassured.RestAssured;
 import com.jayway.restassured.http.ContentType;
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Before;
-import org.junit.ClassRule;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.util.UUID;
+import spark.Service;
 
-import static ai.grakn.test.graql.query.AskQueryTest.graph;
+import static ai.grakn.engine.GraknEngineServer.configureSpark;
+import static ai.grakn.test.GraknTestEnv.ensureCassandraRunning;
+import static ai.grakn.util.REST.Request.COMMIT_LOG_COUNTING;
+import static ai.grakn.util.REST.Request.KEYSPACE;
+import static com.jayway.restassured.RestAssured.baseURI;
 import static com.jayway.restassured.RestAssured.delete;
 import static com.jayway.restassured.RestAssured.given;
 import static org.junit.Assert.assertEquals;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 public class CommitLogControllerTest {
-    private final String KEYSPACE = "test";
-    private final EngineCache cache = EngineCache.getInstance();
+    private final ConceptCache cache = EngineCacheProvider.getCache();
 
-    @ClassRule
-    public static final EngineContext engine = EngineContext.startMultiQueueServer();
+    private static final String TEST_KEYSPACE = "test";
+    private static final int PORT = 4567;
+
+    private static Service spark;
+    private static TaskManager manager;
+
+    @BeforeClass
+    public static void setupControllers() throws Exception {
+        ensureCassandraRunning();
+
+        EngineCacheProvider.init(EngineCacheStandAlone.getCache());
+
+        baseURI = "http://localhost:" + PORT;
+        spark = Service.ignite();
+        configureSpark(spark, PORT);
+
+        manager = mock(TaskManager.class);
+
+        new CommitLogController(spark, manager);
+        new SystemController(spark);
+
+        spark.awaitInitialization();
+    }
+
+    @AfterClass
+    public static void stopSpark() throws Exception {
+        spark.stop();
+
+        // Block until server is truly stopped
+        // This occurs when there is no longer a port assigned to the Spark server
+        boolean running = true;
+        while (running) {
+            try {
+                spark.port();
+            } catch(IllegalStateException e){
+                running = false;
+            }
+        }
+
+        manager.close();
+        EngineCacheProvider.clearCache();
+    }
 
     @Before
-    public void setUp() throws Exception {
+    public void sendFakeCommitLog() throws Exception {
         String commitLog = "{\n" +
-                "    \"concepts\":[\n" +
+                "    \"" + REST.Request.COMMIT_LOG_FIXING + "\":[\n" +
                 "        {\"" + REST.Request.COMMIT_LOG_INDEX + "\":\"10\", \"" + REST.Request.COMMIT_LOG_ID + "\":\"1\", \"" + REST.Request.COMMIT_LOG_TYPE + "\":\"" + Schema.BaseType.CASTING + "\"}, \n" +
                 "        {\"" + REST.Request.COMMIT_LOG_INDEX + "\":\"20\", \"" + REST.Request.COMMIT_LOG_ID + "\":\"2\", \"" + REST.Request.COMMIT_LOG_TYPE + "\":\"" + Schema.BaseType.CASTING + "\"}, \n" +
                 "        {\"" + REST.Request.COMMIT_LOG_INDEX + "\":\"30\", \"" + REST.Request.COMMIT_LOG_ID + "\":\"3\", \"" + REST.Request.COMMIT_LOG_TYPE + "\":\"" + Schema.BaseType.CASTING + "\"}, \n" +
@@ -66,40 +126,47 @@ public class CommitLogControllerTest {
                 "        {\"" + REST.Request.COMMIT_LOG_INDEX + "\":\"80\", \"" + REST.Request.COMMIT_LOG_ID + "\":\"8\", \"" + REST.Request.COMMIT_LOG_TYPE + "\":\"" + Schema.BaseType.RELATION + "\"},\n" +
                 "        {\"" + REST.Request.COMMIT_LOG_INDEX + "\":\"90\", \"" + REST.Request.COMMIT_LOG_ID + "\":\"9\", \"" + REST.Request.COMMIT_LOG_TYPE + "\":\"" + Schema.BaseType.RELATION + "\"},\n" +
                 "        {\"" + REST.Request.COMMIT_LOG_INDEX + "\":\"100\", \"" + REST.Request.COMMIT_LOG_ID + "\":\"10\", \"" + REST.Request.COMMIT_LOG_TYPE + "\":\"" + Schema.BaseType.RELATION + "\"}\n" +
+                "    ],\n" +
+                "    \"" + REST.Request.COMMIT_LOG_COUNTING + "\":[\n" +
+                "        {\"" + REST.Request.COMMIT_LOG_TYPE_NAME + "\":\"Alpha\", \"" + REST.Request.COMMIT_LOG_INSTANCE_COUNT + "\":\"-3\"}, \n" +
+                "        {\"" + REST.Request.COMMIT_LOG_TYPE_NAME + "\":\"Bravo\", \"" + REST.Request.COMMIT_LOG_INSTANCE_COUNT + "\":\"-2\"}, \n" +
+                "        {\"" + REST.Request.COMMIT_LOG_TYPE_NAME + "\":\"Charlie\", \"" + REST.Request.COMMIT_LOG_INSTANCE_COUNT + "\":\"-1\"}, \n" +
+                "        {\"" + REST.Request.COMMIT_LOG_TYPE_NAME + "\":\"Delta\", \"" + REST.Request.COMMIT_LOG_INSTANCE_COUNT + "\":\"1\"}, \n" +
+                "        {\"" + REST.Request.COMMIT_LOG_TYPE_NAME + "\":\"Foxtrot\", \"" + REST.Request.COMMIT_LOG_INSTANCE_COUNT + "\":\"2\"} \n" +
                 "    ]\n" +
                 "}";
 
         given().contentType(ContentType.JSON).body(commitLog).when().
-                post(REST.WebPath.COMMIT_LOG_URI + "?" + REST.Request.KEYSPACE_PARAM + "=" + KEYSPACE).
+                post(REST.WebPath.COMMIT_LOG_URI + "?" + REST.Request.KEYSPACE_PARAM + "=" + TEST_KEYSPACE).
                 then().statusCode(200).extract().response().andReturn();
     }
 
     @After
-    public void takeDown() throws InterruptedException {
-        cache.getCastingJobs(KEYSPACE).clear();
+    public void clearCache() throws InterruptedException {
+        cache.getCastingJobs(TEST_KEYSPACE).clear();
     }
 
     @Test
-    public void checkDirectClearWorks(){
-        GraknGraph test = Grakn.factory(Grakn.DEFAULT_URI, KEYSPACE).getGraph();
-        test.admin().clear(EngineCache.getInstance());
-        assertEquals(0, cache.getCastingJobs(KEYSPACE).size());
-        assertEquals(0, cache.getResourceJobs(KEYSPACE).size());
+    public void whenClearingGraph_CommitLogClearsCache(){
+        GraknGraph test = Grakn.session(Grakn.DEFAULT_URI, TEST_KEYSPACE).open(GraknTxType.WRITE);
+        test.admin().clear(EngineCacheProvider.getCache());
+        assertEquals(0, cache.getCastingJobs(TEST_KEYSPACE).size());
+        assertEquals(0, cache.getResourceJobs(TEST_KEYSPACE).size());
     }
 
     @Test
-    public void testControllerWorking() {
-        assertEquals(4, cache.getCastingJobs(KEYSPACE).size());
-        assertEquals(2, cache.getResourceJobs(KEYSPACE).size());
+    public void whenControllerReceivesLog_CacheIsUpdated() {
+        assertEquals(4, cache.getCastingJobs(TEST_KEYSPACE).size());
+        assertEquals(2, cache.getResourceJobs(TEST_KEYSPACE).size());
     }
 
     @Test
-    public void testCommitLogSubmission() throws GraknValidationException {
+    public void whenCommittingGraph_CommitLogIsSent() throws GraknValidationException {
         final String BOB = "bob";
         final String TIM = "tim";
 
-        GraknGraph bob = Grakn.factory(Grakn.DEFAULT_URI, BOB).getGraph();
-        GraknGraph tim = Grakn.factory(Grakn.DEFAULT_URI, TIM).getGraph();
+        GraknGraph bob = Grakn.session(Grakn.DEFAULT_URI, BOB).open(GraknTxType.WRITE);
+        GraknGraph tim = Grakn.session(Grakn.DEFAULT_URI, TIM).open(GraknTxType.WRITE);
 
         addSomeData(bob);
 
@@ -114,8 +181,8 @@ public class CommitLogControllerTest {
         assertEquals(2, cache.getCastingJobs(TIM).size());
         assertEquals(1, cache.getResourceJobs(TIM).size());
 
-        Grakn.factory(Grakn.DEFAULT_URI, BOB).getGraph().clear();
-        Grakn.factory(Grakn.DEFAULT_URI, TIM).getGraph().clear();
+        Grakn.session(Grakn.DEFAULT_URI, BOB).open(GraknTxType.WRITE).clear();
+        Grakn.session(Grakn.DEFAULT_URI, TIM).open(GraknTxType.WRITE).clear();
 
         assertEquals(0, cache.getCastingJobs(BOB).size());
         assertEquals(0, cache.getCastingJobs(TIM).size());
@@ -129,30 +196,26 @@ public class CommitLogControllerTest {
     private void addSomeData(GraknGraph graph) throws GraknValidationException {
         RoleType role1 = graph.putRoleType("Role 1");
         RoleType role2 = graph.putRoleType("Role 2");
-        RelationType relationType = graph.putRelationType("A Relation Type").hasRole(role1).hasRole(role2);
-        EntityType type = graph.putEntityType("A Thing").playsRole(role1).playsRole(role2);
-        ResourceType<String> resourceType = graph.putResourceType("A Resource Type Thing", ResourceType.DataType.STRING).playsRole(role1).playsRole(role2);
+        RelationType relationType = graph.putRelationType("A Relation Type").relates(role1).relates(role2);
+        EntityType type = graph.putEntityType("A Thing").plays(role1).plays(role2);
+        ResourceType<String> resourceType = graph.putResourceType("A Resource Type Thing", ResourceType.DataType.STRING).plays(role1).plays(role2);
         Entity entity = type.addEntity();
         Resource resource = resourceType.putResource(UUID.randomUUID().toString());
 
-        relationType.addRelation().putRolePlayer(role1, entity).putRolePlayer(role2, resource);
+        relationType.addRelation().addRolePlayer(role1, entity).addRolePlayer(role2, resource);
 
-        graph.commitOnClose();
-        graph.close();
+        graph.commit();
     }
 
     @Test
-    public void testDeleteController() throws InterruptedException {
-        assertEquals(4, cache.getCastingJobs(KEYSPACE).size());
-        assertEquals(2, cache.getResourceJobs(KEYSPACE).size());
-
-        delete(REST.WebPath.COMMIT_LOG_URI + "?" + REST.Request.KEYSPACE_PARAM + "=" + KEYSPACE).
+    public void whenDeletingViaController_CacheIsCleared() throws InterruptedException {
+        delete(REST.WebPath.COMMIT_LOG_URI + "?" + REST.Request.KEYSPACE_PARAM + "=" + TEST_KEYSPACE).
                 then().statusCode(200).extract().response().andReturn();
 
-        waitForCache(KEYSPACE, 0);
+        waitForCache(TEST_KEYSPACE, 0);
 
-        assertEquals(0, cache.getCastingJobs(KEYSPACE).size());
-        assertEquals(0, cache.getResourceJobs(KEYSPACE).size());
+        assertEquals(0, cache.getCastingJobs(TEST_KEYSPACE).size());
+        assertEquals(0, cache.getResourceJobs(TEST_KEYSPACE).size());
     }
 
     private void waitForCache(String keyspace, int value) throws InterruptedException {
@@ -167,14 +230,50 @@ public class CommitLogControllerTest {
     }
 
     @Test
-    public void testSystemKeyspaceNotSubmittingLogs() throws GraknValidationException {
-        GraknGraph graph1 = Grakn.factory(Grakn.DEFAULT_URI, SystemKeyspace.SYSTEM_GRAPH_NAME).getGraph();
+    public void whenSendingCommitLogs_TaskManagerReceivesCountTask(){
+        verify(manager, atLeastOnce()).addHighPriorityTask(
+                argThat(argument ->
+                        argument.taskClass().equals(UpdatingInstanceCountTask.class)
+                        && argument.configuration().at(COMMIT_LOG_COUNTING).asJsonList().size() == 5)
+        );
+    }
+
+    @Test
+    public void whenCommittingGraph_TaskManagerReceivesCountTask(){
+        final String BOB = "bob";
+        final String TIM = "tim";
+
+        GraknGraph bob = Grakn.session(Grakn.DEFAULT_URI, BOB).open(GraknTxType.WRITE);
+        GraknGraph tim = Grakn.session(Grakn.DEFAULT_URI, TIM).open(GraknTxType.WRITE);
+
+        addSomeData(bob);
+        addSomeData(tim);
+
+        try {
+            verify(manager, atLeastOnce()).addHighPriorityTask(argThat(argument ->
+                    argument.configuration().at(KEYSPACE).asString().equals(BOB) &&
+                            argument.configuration().at(COMMIT_LOG_COUNTING).asJsonList().size() == 3));
+
+            verify(manager, atLeastOnce()).addHighPriorityTask(argThat(argument ->
+                    argument.configuration().at(KEYSPACE).asString().equals(TIM) &&
+                            argument.configuration().at(COMMIT_LOG_COUNTING).asJsonList().size() == 3));
+        } finally {
+            Grakn.session(Grakn.DEFAULT_URI, BOB).open(GraknTxType.WRITE).clear();
+            Grakn.session(Grakn.DEFAULT_URI, TIM).open(GraknTxType.WRITE).clear();
+
+            bob.close();
+            tim.close();
+        }
+    }
+
+    @Test
+    public void whenCommittingSystemGraph_CommitLogsNotSent() throws GraknValidationException {
+        GraknGraph graph1 = Grakn.session(Grakn.DEFAULT_URI, SystemKeyspace.SYSTEM_GRAPH_NAME).open(GraknTxType.WRITE);
         ResourceType<String> resourceType = graph1.putResourceType("New Resource Type", ResourceType.DataType.STRING);
         resourceType.putResource("a");
         resourceType.putResource("b");
         resourceType.putResource("c");
-        graph1.commitOnClose();
-        graph1.close();
+        graph1.commit();
 
         assertEquals(0, cache.getResourceJobs(SystemKeyspace.SYSTEM_GRAPH_NAME).size());
     }

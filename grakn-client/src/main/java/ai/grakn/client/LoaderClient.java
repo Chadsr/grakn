@@ -206,7 +206,7 @@ public class LoaderClient {
      *
      * @param queries Queries to be inserted
      */
-    private void sendQueriesToLoader(Collection<InsertQuery> queries){
+    void sendQueriesToLoader(Collection<InsertQuery> queries){
         try {
             blocker.acquire();
         } catch (InterruptedException e) {
@@ -343,12 +343,12 @@ public class LoaderClient {
                     }
                 } catch (Throwable t) {
                     throw new RuntimeException(t);
-                } finally {
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
+                }
+                
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
                 }
             }
         });

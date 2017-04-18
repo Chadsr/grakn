@@ -39,14 +39,46 @@ import java.util.Collection;
 public interface RuleType extends Type {
     //------------------------------------- Modifiers ----------------------------------
     /**
-     * Add a new Rule, given Patterns for the Left Hand Side and Right Hand Side.
+     * Adds a new Rule if it does not exist otherwise returns the existing rule.
      * @see Pattern
      *
      * @param lhs A string representing the left hand side Graql query.
      * @param rhs A string representing the right hand side Graql query.
      * @return a new Rule
      */
-    Rule addRule(Pattern lhs, Pattern rhs);
+    Rule putRule(Pattern lhs, Pattern rhs);
+
+    /**
+     * Classifies the type to a specific scope. This allows you to optionally categorise types.
+     *
+     * @param scope The category of this Type
+     * @return The Type itself.
+     */
+    RuleType scope(Instance scope);
+
+    /**
+     * Delete the scope specified.
+     *
+     * @param scope The Instances that is currently scoping this Type.
+     * @return The Type itself
+     */
+    RuleType deleteScope(Instance scope);
+
+    /**
+     * Creates a RelationType which allows this type and a resource type to be linked in a strictly one-to-one mapping.
+     *
+     * @param resourceType The resource type which instances of this type should be allowed to play.
+     * @return The Type itself.
+     */
+    RuleType key(ResourceType resourceType);
+
+    /**
+     * Creates a RelationType which allows this type and a resource type to be linked.
+     *
+     * @param resourceType The resource type which instances of this type should be allowed to play.
+     * @return The Type itself.
+     */
+    RuleType resource(ResourceType resourceType);
 
     //---- Inherited Methods
     /**
@@ -89,14 +121,14 @@ public interface RuleType extends Type {
      * @param roleType The Role Type which the instances of this Type are allowed to play.
      * @return The Rule Type itself
      */
-    RuleType playsRole(RoleType roleType);
+    RuleType plays(RoleType roleType);
 
     /**
      *
      * @param roleType The Role Type which the instances of this Type should no longer be allowed to play.
      * @return The Rule Type itself
      */
-    RuleType deletePlaysRole(RoleType roleType);
+    RuleType deletePlays(RoleType roleType);
 
     /**
      *

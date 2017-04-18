@@ -19,18 +19,17 @@
 package ai.grakn.graphs;
 
 import ai.grakn.GraknGraph;
-import ai.grakn.GraknGraphFactory;
 import ai.grakn.concept.ConceptId;
 import ai.grakn.concept.EntityType;
 import ai.grakn.concept.RelationType;
 import ai.grakn.concept.RoleType;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 
 import java.util.function.Consumer;
 
 public class NguyenGraph extends TestGraph {
 
-    private final static TypeName key = TypeName.of("index");
+    private final static TypeLabel key = TypeLabel.of("index");
     private final static String gqlFile = "nguyen-test.gql";
 
     private final int n;
@@ -79,31 +78,32 @@ public class NguyenGraph extends TestGraph {
             bInstancesIds[i] = putEntity(graph, "b" + i, bEntity, key).getId();
         }
 
-        R.addRelation()
-                .putRolePlayer(Rfrom, graph.getConcept(dId))
-                .putRolePlayer(Rto, graph.getConcept(eId));
 
         P.addRelation()
-                .putRolePlayer(Pfrom, graph.getConcept(cId))
-                .putRolePlayer(Pto, graph.getConcept(dId));
+                .addRolePlayer(Pfrom, graph.getConcept(cId))
+                .addRolePlayer(Pto, graph.getConcept(dId));
+
+        R.addRelation()
+                .addRolePlayer(Rfrom, graph.getConcept(dId))
+                .addRolePlayer(Rto, graph.getConcept(eId));
 
         Q.addRelation()
-                .putRolePlayer(Qfrom, graph.getConcept(eId))
-                .putRolePlayer(Qto, graph.getConcept(aInstancesIds[0]));
+                .addRolePlayer(Qfrom, graph.getConcept(eId))
+                .addRolePlayer(Qto, graph.getConcept(aInstancesIds[0]));
 
         for(int i = 0 ; i <= n ;i++){
             P.addRelation()
-                    .putRolePlayer(Pfrom, graph.getConcept(bInstancesIds[i]))
-                    .putRolePlayer(Pto, graph.getConcept(cId));
+                    .addRolePlayer(Pfrom, graph.getConcept(bInstancesIds[i]))
+                    .addRolePlayer(Pto, graph.getConcept(cId));
             P.addRelation()
-                    .putRolePlayer(Pfrom, graph.getConcept(cId))
-                    .putRolePlayer(Pto, graph.getConcept(bInstancesIds[i]));
+                    .addRolePlayer(Pfrom, graph.getConcept(cId))
+                    .addRolePlayer(Pto, graph.getConcept(bInstancesIds[i]));
             Q.addRelation()
-                    .putRolePlayer(Qfrom, graph.getConcept(aInstancesIds[i]))
-                    .putRolePlayer(Qto, graph.getConcept(bInstancesIds[i]));
+                    .addRolePlayer(Qfrom, graph.getConcept(aInstancesIds[i]))
+                    .addRolePlayer(Qto, graph.getConcept(bInstancesIds[i]));
             Q.addRelation()
-                    .putRolePlayer(Qfrom, graph.getConcept(bInstancesIds[i]))
-                    .putRolePlayer(Qto, graph.getConcept(aInstancesIds[i+1]));
+                    .addRolePlayer(Qfrom, graph.getConcept(bInstancesIds[i]))
+                    .addRolePlayer(Qto, graph.getConcept(aInstancesIds[i+1]));
         }
     }
 }

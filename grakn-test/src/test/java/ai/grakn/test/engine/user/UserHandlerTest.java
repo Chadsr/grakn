@@ -19,6 +19,7 @@
 package ai.grakn.test.engine.user;
 
 import ai.grakn.GraknGraph;
+import ai.grakn.GraknTxType;
 import ai.grakn.engine.user.Password;
 import ai.grakn.engine.user.UsersHandler;
 import ai.grakn.factory.EngineGraknGraphFactory;
@@ -45,7 +46,7 @@ public class UserHandlerTest {
     private static String password = "witcher";
 
     @ClassRule
-    public static final EngineContext engine = EngineContext.startMultiQueueServer();
+    public static final EngineContext engine = EngineContext.startInMemoryServer();
 
     @Before
     public void addUser(){
@@ -77,8 +78,9 @@ public class UserHandlerTest {
 
     @Test
     public void testUserInGraph(){
-        GraknGraph graph = EngineGraknGraphFactory.getInstance().getGraph(SystemKeyspace.SYSTEM_GRAPH_NAME);
+        GraknGraph graph = EngineGraknGraphFactory.getInstance().getGraph(SystemKeyspace.SYSTEM_GRAPH_NAME, GraknTxType.WRITE);
         assertNotNull(graph.getResourceType(UsersHandler.USER_NAME).getResource(userName));
+        graph.close();
     }
 
     @Test

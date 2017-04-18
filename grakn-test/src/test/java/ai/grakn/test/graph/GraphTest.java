@@ -2,10 +2,12 @@ package ai.grakn.test.graph;
 
 import ai.grakn.Grakn;
 import ai.grakn.GraknGraph;
-import ai.grakn.GraknGraphFactory;
+import ai.grakn.GraknSession;
+import ai.grakn.GraknTxType;
 import ai.grakn.exception.GraknValidationException;
-import ai.grakn.exception.GraphRuntimeException;
 import ai.grakn.factory.EngineGraknGraphFactory;
+import ai.grakn.graph.internal.AbstractGraknGraph;
+import ai.grakn.graph.internal.GraknTinkerGraph;
 import ai.grakn.test.EngineContext;
 import org.junit.ClassRule;
 import org.junit.Rule;
@@ -18,28 +20,24 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import static ai.grakn.test.GraknTestEnv.usingTinker;
-import static ai.grakn.util.ErrorMessage.TRANSACTIONS_OPEN;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeFalse;
 
 public class GraphTest {
 
     @ClassRule
-    public static final EngineContext engine = EngineContext.startMultiQueueServer();
+    public static final EngineContext engine = EngineContext.startInMemoryServer();
 
     @Rule
     public final ExpectedException expectedException = ExpectedException.none();
 
     @Test
     public void isClosedTest() throws Exception {
-        GraknGraph graph = engine.factoryWithNewKeyspace().getGraph();
+        GraknGraph graph = engine.factoryWithNewKeyspace().open(GraknTxType.WRITE);
         String keyspace = graph.getKeyspace();
         graph.putEntityType("thing");
-        graph.commitOnClose();
-        assertFalse(graph.isClosed());
-        graph.close();
+        graph.commit();
         assertTrue(graph.isClosed());
 
         HashSet<Future> futures = new HashSet<>();
@@ -53,10 +51,9 @@ public class GraphTest {
     }
 
     private void addThingToBatch(String keyspace){
-        try(GraknGraph graphBatchLoading = Grakn.factory(Grakn.DEFAULT_URI, keyspace).getGraph()) {
+        try(GraknGraph graphBatchLoading = Grakn.session(Grakn.DEFAULT_URI, keyspace).open(GraknTxType.WRITE)) {
             graphBatchLoading.getEntityType("thing").addEntity();
-            graphBatchLoading.commitOnClose();
-            graphBatchLoading.close();
+            graphBatchLoading.commit();
         } catch (Exception e){
             throw new RuntimeException(e);
         }
@@ -65,8 +62,9 @@ public class GraphTest {
     @Test
     public void testSameGraphs() throws GraknValidationException {
         String key = "mykeyspace";
-        GraknGraph graph1 = Grakn.factory(Grakn.DEFAULT_URI, key).getGraph();
-        GraknGraph graph2 = EngineGraknGraphFactory.getInstance().getGraph(key);
+        GraknGraph graph1 = Grakn.session(Grakn.DEFAULT_URI, key).open(GraknTxType.WRITE);
+        graph1.close();
+        GraknGraph graph2 = EngineGraknGraphFactory.getInstance().getGraph(key, GraknTxType.WRITE);
         assertEquals(graph1, graph2);
         graph1.close();
         graph2.close();
@@ -74,57 +72,44 @@ public class GraphTest {
 
     @Test
     public void checkNumberOfOpenTransactionsChangesAsExpected() throws ExecutionException, InterruptedException {
-        GraknGraphFactory factory = engine.factoryWithNewKeyspace();
-        assertEquals(0, factory.openGraphTxs());
-        assertEquals(0, factory.openGraphBatchTxs());
+        GraknSession factory = engine.factoryWithNewKeyspace();
 
-        factory.getGraph();
-        assertEquals(1, factory.openGraphTxs());
-        assertEquals(0, factory.openGraphBatchTxs());
+        GraknGraph graph = factory.open(GraknTxType.READ);
+        graph.close();
+        GraknGraph batchGraph = factory.open(GraknTxType.BATCH);
 
-        factory.getGraph();
-        factory.getGraphBatchLoading();
-        assertEquals(1, factory.openGraphTxs());
-        assertEquals(1, factory.openGraphBatchTxs());
-
-        int expectedValue = 1;
-
-        for(int i = 0; i < 5; i ++){
-            Executors.newSingleThreadExecutor().submit(factory::getGraph).get();
-            Executors.newSingleThreadExecutor().submit(factory::getGraphBatchLoading).get();
-
-            if(!usingTinker()) expectedValue++;
-
-            assertEquals(expectedValue, factory.openGraphTxs());
-            assertEquals(expectedValue, factory.openGraphBatchTxs());
+        for(int i = 0; i < 6; i ++){
+            Executors.newSingleThreadExecutor().submit(() -> factory.open(GraknTxType.WRITE)).get();
         }
+
+        for(int i = 0; i < 2; i ++){
+            Executors.newSingleThreadExecutor().submit(() -> factory.open(GraknTxType.BATCH)).get();
+        }
+
+        if(graph instanceof GraknTinkerGraph){
+            assertEquals(1, openTransactions(graph));
+            assertEquals(1, openTransactions(batchGraph));
+        } else {
+            assertEquals(6, openTransactions(graph));
+            assertEquals(3, openTransactions(batchGraph));
+        }
+    }
+    private int openTransactions(GraknGraph graph){
+        if(graph == null) return 0;
+        return ((AbstractGraknGraph) graph).numOpenTx();
     }
 
     @Test
     public void closeGraphWhenOnlyOneTransactionIsOpen(){
         assumeFalse(usingTinker()); //Tinker does not have any connections to close
 
-        GraknGraphFactory factory = engine.factoryWithNewKeyspace();
-        GraknGraph graph = factory.getGraph();
+        GraknSession factory = engine.factoryWithNewKeyspace();
+        GraknGraph graph = factory.open(GraknTxType.WRITE);
         factory.close();
 
         expectedException.expect(IllegalStateException.class);
         expectedException.expectMessage("Graph has been closed");
 
         graph.putEntityType("A Thing");
-    }
-
-    @Test
-    public void attemptToCloseGraphWithOpenTransactionsThenThrowException() throws ExecutionException, InterruptedException {
-        assumeFalse(usingTinker()); //Only tinker really supports transactions
-
-        GraknGraphFactory factory = engine.factoryWithNewKeyspace();
-        GraknGraph graph = factory.getGraph();
-        Executors.newSingleThreadExecutor().submit(factory::getGraph).get();
-
-        expectedException.expect(GraphRuntimeException.class);
-        expectedException.expectMessage(TRANSACTIONS_OPEN.getMessage(graph, graph.getKeyspace(), 2));
-
-        factory.close();
     }
 }

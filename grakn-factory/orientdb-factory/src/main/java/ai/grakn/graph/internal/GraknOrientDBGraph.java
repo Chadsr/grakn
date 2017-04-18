@@ -24,6 +24,8 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.strategy.verification.ReadOnlyStrategy;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 
+import java.util.Properties;
+
 /**
  * <p>
  *     A Grakn Graph using {@link OrientGraph} as a vendor backend.
@@ -40,8 +42,8 @@ import org.apache.tinkerpop.gremlin.structure.Vertex;
  * @author fppt
  */
 public class GraknOrientDBGraph extends AbstractGraknGraph<OrientGraph> {
-    public GraknOrientDBGraph(OrientGraph graph, String name, String engineUrl, boolean batchLoading){
-        super(graph, name, engineUrl, batchLoading);
+    public GraknOrientDBGraph(OrientGraph graph, String name, String engineUrl, boolean batchLoading, Properties properties){
+        super(graph, name, engineUrl, batchLoading, properties);
     }
 
     /**
@@ -61,7 +63,13 @@ public class GraknOrientDBGraph extends AbstractGraknGraph<OrientGraph> {
     }
 
     @Override
-    protected void commitTransaction(){
+    public boolean isConnectionClosed() {
+        //TODO: determine if the connection is closed
+        return false;
+    }
+
+    @Override
+    protected void commitTransactionInternal(){
         getTinkerPopGraph().commit();
     }
 

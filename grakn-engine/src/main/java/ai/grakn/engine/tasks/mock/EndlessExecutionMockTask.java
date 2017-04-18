@@ -20,7 +20,8 @@ package ai.grakn.engine.tasks.mock;
 
 import ai.grakn.engine.TaskId;
 
-import java.util.function.Consumer;
+import ai.grakn.engine.tasks.TaskCheckpoint;
+import java.time.Duration;
 
 /**
  * Mocked task that will never end
@@ -30,12 +31,12 @@ import java.util.function.Consumer;
 public class EndlessExecutionMockTask extends MockBackgroundTask {
 
     @Override
-    protected void startInner(TaskId id) {
+    protected void executeStartInner(TaskId id) {
         // Never return until stopped
         if (!cancelled.get()) {
             synchronized (sync) {
                 try {
-                    sync.wait();
+                    sync.wait(Duration.ofMinutes(5).toMillis());
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
@@ -43,7 +44,8 @@ public class EndlessExecutionMockTask extends MockBackgroundTask {
         }
     }
 
-    public void pause() {}
+    @Override
+    protected void executeResumeInner(TaskCheckpoint checkpoint) {}
 
-    public void resume(Consumer<String> c, String s) {}
+    public void pause() {}
 }

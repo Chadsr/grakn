@@ -40,6 +40,8 @@ import java.util.Set;
  * A vertex program specific to Grakn with common method implementations.
  * <p>
  *
+ * @param <T> the type of messages being sent between vertices
+ *
  * @author Jason Liu
  * @author Sheldon Hall
  */
@@ -139,18 +141,18 @@ public abstract class GraknVertexProgram<T> extends CommonOLAP implements Vertex
     }
 
     void degreeStepCasting(Messenger<Long> messenger) {
-        boolean hasRolePlayer = false;
+        boolean hasPlayer = false;
         long assertionCount = 0;
         Iterator<Long> iterator = messenger.receiveMessages();
         while (iterator.hasNext()) {
             long message = iterator.next();
             // count number of assertions connected
             if (message < 0) assertionCount++;
-            else hasRolePlayer = true;
+            else hasPlayer = true;
         }
 
         // make sure this role-player is in the subgraph
-        if (hasRolePlayer) {
+        if (hasPlayer) {
             messenger.sendMessage(messageScopeInCasting, 1L);
             messenger.sendMessage(messageScopeOutRolePlayer, assertionCount);
         }

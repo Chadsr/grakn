@@ -17,12 +17,13 @@
  */
 package ai.grakn.graql.internal.reasoner.atom;
 
-import ai.grakn.GraknGraph;
 import ai.grakn.concept.ConceptId;
 import ai.grakn.concept.RoleType;
 import ai.grakn.concept.Rule;
 import ai.grakn.concept.Type;
+import ai.grakn.graql.admin.Atomic;
 import ai.grakn.graql.admin.ReasonerQuery;
+import ai.grakn.graql.admin.Unifier;
 import ai.grakn.graql.internal.reasoner.Reasoner;
 import ai.grakn.graql.admin.VarAdmin;
 import ai.grakn.graql.VarName;
@@ -31,7 +32,9 @@ import ai.grakn.graql.internal.reasoner.atom.predicate.IdPredicate;
 import ai.grakn.graql.internal.reasoner.atom.predicate.Predicate;
 import ai.grakn.graql.internal.reasoner.atom.predicate.ValuePredicate;
 import ai.grakn.graql.internal.reasoner.query.ReasonerQueryImpl;
+import ai.grakn.graql.internal.reasoner.query.UnifierImpl;
 import ai.grakn.graql.internal.reasoner.rule.InferenceRule;
+import com.google.common.collect.Sets;
 import java.util.stream.Collectors;
 import javafx.util.Pair;
 
@@ -82,26 +85,42 @@ public abstract class Atom extends AtomBase {
      * */
     public boolean isResource(){ return false;}
 
+    /**
+     * @return true if atom contains a substitution (id predicates)
+     */
+    public boolean hasSubstitution(){ return false;}
+
     protected abstract boolean isRuleApplicable(InferenceRule child);
 
-    public Set<Rule> getApplicableRules() {
-        Set<Rule> children = new HashSet<>();
-        GraknGraph graph = getParentQuery().graph();
-        Collection<Rule> rulesFromType = getType() != null? getType().getRulesOfConclusion() : Reasoner.getRules(graph);
-        rulesFromType.forEach(rule -> {
-            InferenceRule child = new InferenceRule(rule, graph);
-            boolean ruleRelevant = isRuleApplicable(child);
-            if (ruleRelevant) children.add(rule);
-        });
-        return children;
+    /**
+     * @return set of potentially applicable rules - does shallow (fast) check for applicability
+     */
+    private Set<Rule> getPotentialRules(){
+        Type type = getType();
+        return type != null ?
+                type.subTypes().stream().flatMap(t -> t.getRulesOfConclusion().stream()).collect(Collectors.toSet()) :
+                Reasoner.getRules(graph());
+    }
+
+    /**
+     * @return set of applicable rules - does detailed (slow) check for applicability
+     */
+    public Set<InferenceRule> getApplicableRules() {
+        return getPotentialRules().stream()
+                .map(rule -> new InferenceRule(rule, graph()))
+                .filter(this::isRuleApplicable)
+                .collect(Collectors.toSet());
     }
 
     @Override
     public boolean isRuleResolvable() {
         Type type = getType();
-        return type != null
-                && !type.getRulesOfConclusion().isEmpty()
-                && !this.getApplicableRules().isEmpty();
+        if (type != null) {
+            return !this.getPotentialRules().isEmpty()
+                    && !this.getApplicableRules().isEmpty();
+        } else {
+            return !this.getApplicableRules().isEmpty();
+        }
     }
 
     @Override
@@ -185,10 +204,20 @@ public abstract class Atom extends AtomBase {
         return relevantTypes;
     }
 
+    /**
+     * @return set of constraints of this atom (predicates + types) that are not selectable
+     */
+    public Set<Atomic> getNonSelectableConstraints() {
+        Set<Atom> types = getTypeConstraints().stream()
+                .filter(at -> !at.isSelectable())
+                .collect(Collectors.toSet());
+        return Sets.union(types, getPredicates());
+    }
+
     public Set<IdPredicate> getUnmappedIdPredicates(){ return new HashSet<>();}
     public Set<TypeAtom> getUnmappedTypeConstraints(){ return new HashSet<>();}
     public Set<TypeAtom> getMappedTypeConstraints() { return new HashSet<>();}
-    public Set<Map<VarName, VarName>> getPermutationUnifiers(Atom headAtom){ return new HashSet<>();}
+    public Set<Unifier> getPermutationUnifiers(Atom headAtom){ return new HashSet<>();}
 
     /**
      * @return map of role type- (var name, var type) pairs
@@ -211,5 +240,5 @@ public abstract class Atom extends AtomBase {
      * between the relation variable and relation players
      * @return pair of (rewritten atom, unifiers required to unify child with rewritten atom)
      */
-    public Pair<Atom, Map<VarName, VarName>> rewriteToUserDefinedWithUnifiers(){ return new Pair<>(this, new HashMap<>());}
+    public Pair<Atom, Unifier> rewriteToUserDefinedWithUnifiers(){ return new Pair<>(this, new UnifierImpl());}
 }

@@ -20,7 +20,7 @@ package ai.grakn.graql;
 
 import ai.grakn.concept.ConceptId;
 import ai.grakn.concept.ResourceType;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 import ai.grakn.graql.admin.VarAdmin;
 
 import javax.annotation.CheckReturnValue;
@@ -49,42 +49,35 @@ public interface Var extends Pattern {
     Var id(ConceptId id);
 
     /**
-     * @param name a string that this variable's name must match
+     * @param label a string that this variable's label must match
      * @return this
      */
     @CheckReturnValue
-    Var name(String name);
+    Var label(String label);
 
     /**
-     * @param name a type name that this variable's name must match
+     * @param label a type label that this variable's label must match
      * @return this
      */
     @CheckReturnValue
-    Var name(TypeName name);
+    Var label(TypeLabel label);
 
     /**
      * @param value a value that this variable's value must exactly match
      * @return this
      */
     @CheckReturnValue
-    Var value(Object value);
+    Var val(Object value);
 
     /**
      * @param predicate a atom this variable's value must match
      * @return this
      */
     @CheckReturnValue
-    Var value(ValuePredicate predicate);
+    Var val(ValuePredicate predicate);
 
     /**
-     * @param var a variable representing a resource
-     * @return this
-     */
-    @CheckReturnValue
-    Var has(Var var);
-
-    /**
-     * the variable must have a resource or name of the given type with an exact matching value
+     * the variable must have a resource of the given type with an exact matching value
      *
      * @param type a resource type in the ontology
      * @param value a value of a resource
@@ -94,7 +87,7 @@ public interface Var extends Pattern {
     Var has(String type, Object value);
 
     /**
-     * the variable must have a resource or name of the given type that matches the given atom
+     * the variable must have a resource of the given type that matches the given atom
      *
      * @param type a resource type in the ontology
      * @param predicate a atom on the value of a resource
@@ -104,7 +97,7 @@ public interface Var extends Pattern {
     Var has(String type, ValuePredicate predicate);
 
     /**
-     * the variable must have a resource or name of the given type that matches the given atom
+     * the variable must have a resource of the given type that matches the given atom
      *
      * @param type a resource type in the ontology
      * @param var a variable representing a resource
@@ -114,14 +107,14 @@ public interface Var extends Pattern {
     Var has(String type, Var var);
 
     /**
-     * the variable must have a resource or name of the given type that matches the given atom
+     * the variable must have a resource of the given type that matches the given atom
      *
      * @param type a resource type in the ontology
      * @param var a variable representing a resource
      * @return this
      */
     @CheckReturnValue
-    Var has(TypeName type, Var var);
+    Var has(TypeLabel type, Var var);
 
     /**
      * @param type a concept type id that the variable must be of this type
@@ -156,28 +149,28 @@ public interface Var extends Pattern {
      * @return this
      */
     @CheckReturnValue
-    Var hasRole(String type);
+    Var relates(String type);
 
     /**
      * @param type a role type that this relation type variable must have
      * @return this
      */
     @CheckReturnValue
-    Var hasRole(Var type);
+    Var relates(Var type);
 
     /**
      * @param type a role type id that this concept type variable must play
      * @return this
      */
     @CheckReturnValue
-    Var playsRole(String type);
+    Var plays(String type);
 
     /**
      * @param type a role type that this concept type variable must play
      * @return this
      */
     @CheckReturnValue
-    Var playsRole(Var type);
+    Var plays(Var type);
 
     /**
      * @param type a scope that this variable must have
@@ -191,28 +184,28 @@ public interface Var extends Pattern {
      * @return this
      */
     @CheckReturnValue
-    Var hasResource(String type);
+    Var has(String type);
 
     /**
      * @param type a resource type that this type variable can be related to
      * @return this
      */
     @CheckReturnValue
-    Var hasResource(Var type);
+    Var has(Var type);
 
     /**
      * @param type a resource type that this type variable can be one-to-one related to
      * @return this
      */
     @CheckReturnValue
-    Var hasKey(String type);
+    Var key(String type);
 
     /**
      * @param type a resource type that this type variable can be one-to-one related to
      * @return this
      */
     @CheckReturnValue
-    Var hasKey(Var type);
+    Var key(Var type);
 
     /**
      * the variable must be a relation with the given roleplayer
@@ -271,24 +264,6 @@ public interface Var extends Pattern {
      */
     @CheckReturnValue
     Var rel(Var roletype, Var roleplayer);
-
-    /**
-     * the variable must play the given role type
-     *
-     * @param roleType the role type the variable must play
-     * @return this
-     */
-    @CheckReturnValue
-    Var plays(String roleType);
-
-    /**
-     * the variable must play the given role type
-     *
-     * @param roleType the role type the variable must play
-     * @return this
-     */
-    @CheckReturnValue
-    Var plays(Var roleType);
 
     /**
      * set this concept type variable as abstract, meaning it cannot have direct instances

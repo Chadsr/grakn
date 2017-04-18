@@ -19,11 +19,10 @@
 package ai.grakn.graphs;
 
 import ai.grakn.GraknGraph;
-import ai.grakn.GraknGraphFactory;
 import ai.grakn.concept.EntityType;
 import ai.grakn.concept.RelationType;
 import ai.grakn.concept.RoleType;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 
 import java.util.function.Consumer;
 
@@ -31,7 +30,7 @@ import static com.google.common.math.IntMath.pow;
 
 public class PathGraphSymmetric extends TestGraph{
 
-    private final static TypeName key = TypeName.of("index");
+    private final static TypeLabel key = TypeLabel.of("index");
     private final static String gqlFile = "path-test-symmetric.gql";
 
     private final int n;
@@ -76,8 +75,8 @@ public class PathGraphSymmetric extends TestGraph{
 
         for (int j = 0; j < children; j++) {
             arc.addRelation()
-                    .putRolePlayer(arcFrom, getInstance(graph, "a0"))
-                    .putRolePlayer(arcTo, getInstance(graph, "a1," + j));
+                    .addRolePlayer(arcFrom, getInstance(graph, "a0"))
+                    .addRolePlayer(arcTo, getInstance(graph, "a1," + j));
         }
 
         for(int i = 1 ; i < n ;i++) {
@@ -85,8 +84,8 @@ public class PathGraphSymmetric extends TestGraph{
             for (int j = 0; j < m; j++) {
                 for (int c = 0; c < children; c++) {
                     arc.addRelation()
-                            .putRolePlayer(arcFrom, getInstance(graph, "a" + i + "," + j))
-                            .putRolePlayer(arcTo, getInstance(graph, "a" + (i + 1) + "," + (j * children + c)));
+                            .addRolePlayer(arcFrom, getInstance(graph, "a" + i + "," + j))
+                            .addRolePlayer(arcTo, getInstance(graph, "a" + (i + 1) + "," + (j * children + c)));
 
                 }
                 if (j!= 0 && j % 100 == 0)

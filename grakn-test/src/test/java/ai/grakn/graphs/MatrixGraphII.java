@@ -19,19 +19,18 @@
 package ai.grakn.graphs;
 
 import ai.grakn.GraknGraph;
-import ai.grakn.GraknGraphFactory;
 import ai.grakn.concept.ConceptId;
 import ai.grakn.concept.EntityType;
 import ai.grakn.concept.Instance;
 import ai.grakn.concept.RelationType;
 import ai.grakn.concept.RoleType;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 
 import java.util.function.Consumer;
 
 public class MatrixGraphII extends TestGraph {
 
-    private final static TypeName key = TypeName.of("index");
+    private final static TypeLabel key = TypeLabel.of("index");
     private final static String gqlFile = "matrix-testII.gql";
 
     private final int n;
@@ -67,20 +66,20 @@ public class MatrixGraphII extends TestGraph {
                 aInstancesIds[i][j] = putEntity(graph, "a" + i + "," + j, aEntity, key).getId();
 
         Q.addRelation()
-                .putRolePlayer(Qfrom, aInst)
-                .putRolePlayer(Qto, graph.getConcept(aInstancesIds[1][1]));
+                .addRolePlayer(Qfrom, aInst)
+                .addRolePlayer(Qto, graph.getConcept(aInstancesIds[1][1]));
 
         for(int i = 1 ; i <= n ; i++) {
             for (int j = 1; j <= m; j++) {
                 if ( i < n ) {
                     Q.addRelation()
-                            .putRolePlayer(Qfrom, graph.getConcept(aInstancesIds[i][j]))
-                            .putRolePlayer(Qto, graph.getConcept(aInstancesIds[i+1][j]));
+                            .addRolePlayer(Qfrom, graph.getConcept(aInstancesIds[i][j]))
+                            .addRolePlayer(Qto, graph.getConcept(aInstancesIds[i+1][j]));
                 }
                 if ( j < m){
                     Q.addRelation()
-                            .putRolePlayer(Qfrom, graph.getConcept(aInstancesIds[i][j]))
-                            .putRolePlayer(Qto, graph.getConcept(aInstancesIds[i][j+1]));
+                            .addRolePlayer(Qfrom, graph.getConcept(aInstancesIds[i][j]))
+                            .addRolePlayer(Qto, graph.getConcept(aInstancesIds[i][j+1]));
                 }
             }
         }

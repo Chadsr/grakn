@@ -1,23 +1,23 @@
 
 insert
   person sub entity
-    plays-role person-with-address
-    plays-role person-with-phone;
+    plays person-with-address
+    plays person-with-phone;
 
   address sub entity
-    plays-role address-of-person
-    plays-role address-with-street
-    has-resource city;
+    plays address-of-person
+    plays address-with-street
+    has city;
 
   street-address sub entity
-    plays-role street-of-address
-    has-resource number
-    has-resource street;
+    plays street-of-address
+    has number
+    has street;
 
   phone-number sub entity
-    plays-role phone-of-person
-    has-resource location
-    has-resource code;
+    plays phone-of-person
+    has location
+    has code;
 
   code sub resource datatype long;
   location sub resource datatype string;
@@ -32,8 +32,8 @@ insert
   person-with-phone sub role;
   phone-of-person sub role;
 
-  address-has-street sub relation has-role street-of-address has-role address-with-street;
-  has-address sub relation has-role address-of-person has-role person-with-address;
-  has-phone sub relation has-role phone-of-person has-role person-with-phone;
+  address-has-street sub relation relates street-of-address relates address-with-street;
+  has-address sub relation relates address-of-person relates person-with-address;
+  has-phone sub relation relates phone-of-person relates person-with-phone;
 
 

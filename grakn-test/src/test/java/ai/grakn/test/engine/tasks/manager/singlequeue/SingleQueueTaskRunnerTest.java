@@ -20,36 +20,40 @@
 package ai.grakn.test.engine.tasks.manager.singlequeue;
 
 import ai.grakn.engine.TaskId;
+import ai.grakn.engine.tasks.ExternalOffsetStorage;
+import ai.grakn.engine.tasks.TaskCheckpoint;
 import ai.grakn.engine.tasks.TaskState;
 import ai.grakn.engine.tasks.manager.singlequeue.SingleQueueTaskManager;
 import ai.grakn.engine.tasks.manager.singlequeue.SingleQueueTaskRunner;
-import ai.grakn.engine.tasks.storage.TaskStateInMemoryStore;
-import ai.grakn.engine.util.EngineID;
 import ai.grakn.engine.tasks.mock.EndlessExecutionMockTask;
 import ai.grakn.engine.tasks.mock.LongExecutionMockTask;
 import ai.grakn.engine.tasks.mock.ShortExecutionMockTask;
+import ai.grakn.engine.tasks.storage.TaskStateInMemoryStore;
+import ai.grakn.engine.util.EngineID;
+import ai.grakn.test.EngineContext;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultiset;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multiset;
-import com.google.common.collect.Sets;
 import com.pholser.junit.quickcheck.Property;
 import com.pholser.junit.quickcheck.runner.JUnitQuickcheck;
+import mjson.Json;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.TopicPartition;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mockito;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static ai.grakn.engine.TaskStatus.COMPLETED;
@@ -60,17 +64,26 @@ import static ai.grakn.engine.tasks.TaskSchedule.at;
 import static ai.grakn.engine.tasks.TaskSchedule.recurring;
 import static ai.grakn.engine.tasks.mock.MockBackgroundTask.cancelledTasks;
 import static ai.grakn.engine.tasks.mock.MockBackgroundTask.clearTasks;
-import static ai.grakn.test.engine.tasks.BackgroundTaskTestUtils.completableTasks;
 import static ai.grakn.engine.tasks.mock.MockBackgroundTask.completedTasks;
+import static ai.grakn.engine.tasks.mock.MockBackgroundTask.whenTaskFinishes;
+import static ai.grakn.engine.tasks.mock.MockBackgroundTask.whenTaskResumes;
+import static ai.grakn.engine.tasks.mock.MockBackgroundTask.whenTaskStarts;
+import static ai.grakn.test.engine.tasks.BackgroundTaskTestUtils.completableTasks;
+import static ai.grakn.test.engine.tasks.BackgroundTaskTestUtils.createRunningTasks;
 import static ai.grakn.test.engine.tasks.BackgroundTaskTestUtils.createTask;
 import static ai.grakn.test.engine.tasks.BackgroundTaskTestUtils.failingTasks;
-import static ai.grakn.engine.tasks.mock.MockBackgroundTask.whenTaskFinishes;
-import static ai.grakn.engine.tasks.mock.MockBackgroundTask.whenTaskStarts;
 import static java.time.Duration.between;
 import static java.time.Duration.ofMillis;
 import static java.time.Instant.now;
 import static java.util.stream.Collectors.toList;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.lessThan;
+import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -79,52 +92,59 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeThat;
 import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
 
 @RunWith(JUnitQuickcheck.class)
 public class SingleQueueTaskRunnerTest {
 
+    @ClassRule
+    public static final EngineContext zookeeperRunning = EngineContext.startKafkaServer();
+
     private static final EngineID engineID = EngineID.me();
+    private static final int TIME_UNTIL_BACKOFF = 10;
+
     private SingleQueueTaskRunner taskRunner;
     private TaskStateInMemoryStore storage;
     private SingleQueueTaskManager mockedTM;
+    private ExternalOffsetStorage offsetStorage;
 
-    private MockGraknConsumer<TaskId, TaskState> consumer;
-    private TopicPartition partition;
+    private MockGraknConsumer<TaskId, TaskState> lowPriorityConsumer;
+    private TopicPartition lowPTopicPartition;
 
     @Before
     public void setUp() {
         clearTasks();
 
         storage = new TaskStateInMemoryStore();
-        
-        consumer = new MockGraknConsumer<>(OffsetResetStrategy.EARLIEST);
+        offsetStorage = mock(ExternalOffsetStorage.class);
+        lowPriorityConsumer = new MockGraknConsumer<>(OffsetResetStrategy.EARLIEST);
 
-        partition = new TopicPartition("hi", 0);
+        lowPTopicPartition = new TopicPartition("low-priority", 0);
 
-        consumer.assign(ImmutableSet.of(partition));
-        consumer.updateBeginningOffsets(ImmutableMap.of(partition, 0L));
-        consumer.updateEndOffsets(ImmutableMap.of(partition, 0L));
+        lowPriorityConsumer.assign(ImmutableSet.of(lowPTopicPartition));
+        lowPriorityConsumer.updateBeginningOffsets(ImmutableMap.of(lowPTopicPartition, 0L));
+        lowPriorityConsumer.updateEndOffsets(ImmutableMap.of(lowPTopicPartition, 0L));
 
         mockedTM = mock(SingleQueueTaskManager.class);
         when(mockedTM.storage()).thenReturn(storage);
-        when(mockedTM.newConsumer()).thenReturn(consumer);
         doAnswer(invocation -> {
             addTask(invocation.getArgument(0));
             return null;
-        }).when(mockedTM).addTask(any());
+        }).when(mockedTM).addLowPriorityTask(Mockito.any());
     }
 
     public void setUpTasks(List<List<TaskState>> tasks) {
-        taskRunner = new SingleQueueTaskRunner(mockedTM, engineID);
-
-        createValidQueue(tasks);
+        taskRunner = new SingleQueueTaskRunner(mockedTM, engineID, offsetStorage, TIME_UNTIL_BACKOFF, () -> lowPriorityConsumer);
 
         for (List<TaskState> taskList : tasks) {
-            consumer.schedulePollTask(() -> taskList.forEach(this::addTask));
+            lowPriorityConsumer.schedulePollTask(() -> taskList.forEach(this::addTask));
         }
 
-        consumer.scheduleEmptyPollTask(() -> {
+        lowPriorityConsumer.scheduleEmptyPollTask(() -> {
             Thread closeTaskRunner = new Thread(() -> {
                 try {
                     taskRunner.close();
@@ -140,26 +160,10 @@ public class SingleQueueTaskRunnerTest {
         return tasks.stream().flatMap(Collection::stream).collect(toList());
     }
 
-    private void createValidQueue(List<List<TaskState>> tasks) {
-        Set<TaskId> appearedTasks = Sets.newHashSet();
-
-        tasks(tasks).forEach(task -> {
-            TaskId taskId = task.getId();
-
-            if (appearedTasks.contains(taskId)) {
-                // The second time a task appears it must be in RUNNING state
-                task.markRunning(engineID);
-                storage.updateState(task);
-            }
-
-            appearedTasks.add(taskId);
-        });
-    }
-
     private void addTask(TaskState task) {
-        Long offset = consumer.endOffsets(ImmutableSet.of(partition)).get(partition);
-        consumer.addRecord(new ConsumerRecord<>(partition.topic(), partition.partition(), offset, task.getId(), task));
-        consumer.updateEndOffsets(ImmutableMap.of(partition, offset + 1));
+        Long offset = lowPriorityConsumer.endOffsets(ImmutableSet.of(lowPTopicPartition)).get(lowPTopicPartition);
+        lowPriorityConsumer.addRecord(new ConsumerRecord<>(lowPTopicPartition.topic(), lowPTopicPartition.partition(), offset, task.getId(), task.copy()));
+        lowPriorityConsumer.updateEndOffsets(ImmutableMap.of(lowPTopicPartition, offset + 1));
     }
 
     @Property(trials=10)
@@ -180,7 +184,18 @@ public class SingleQueueTaskRunnerTest {
         taskRunner.run();
 
         completableTasks(tasks(tasks)).forEach(task ->
-                assertThat(storage.getState(task).status(), is(COMPLETED))
+                assertThat("Task " + task + " should have completed.", storage.getState(task).status(), is(COMPLETED))
+        );
+    }
+
+    @Property(trials=10)
+    public void afterRunning_AllNonFailingTasksHaveConfigurationRemoved(List<List<TaskState>> tasks) throws Exception {
+        setUpTasks(tasks);
+
+        taskRunner.run();
+
+        completableTasks(tasks(tasks)).forEach(task ->
+                assertThat("Task " + task + " should not have configuration.", storage.getState(task).configuration(), nullValue())
         );
     }
 
@@ -191,7 +206,18 @@ public class SingleQueueTaskRunnerTest {
         taskRunner.run();
 
         failingTasks(tasks(tasks)).forEach(task ->
-                assertThat(storage.getState(task).status(), is(FAILED))
+                assertThat("Task " + task + " should have failed.", storage.getState(task).status(), is(FAILED))
+        );
+    }
+
+    @Property(trials=10)
+    public void afterRunning_AllFailingTasksAreRecordedWithException(List<List<TaskState>> tasks) throws Exception {
+        setUpTasks(tasks);
+
+        taskRunner.run();
+
+        failingTasks(tasks(tasks)).forEach(task ->
+                assertThat("Task " + task + " should have stack trace.", storage.getState(task).stackTrace(), notNullValue())
         );
     }
 
@@ -368,7 +394,7 @@ public class SingleQueueTaskRunnerTest {
 
         setUpTasks(ImmutableList.of(ImmutableList.of(task)));
 
-        storage.newState(TaskState.of(task.getId()).markStopped());
+        storage.newState(task.markStopped());
 
         taskRunner.run();
 
@@ -501,5 +527,50 @@ public class SingleQueueTaskRunnerTest {
 
         assertThat(storage.getState(task.getId()).status(), is(FAILED));
         assertThat(startedCounter.get(), equalTo(expectedExecutionsBeforeFailure));
+    }
+
+    @Test
+    public void whenATaskIsRestartedAfterExecution_ItIsResumed(){
+        ShortExecutionMockTask.resumedCounter.set(0);
+
+        TaskCheckpoint checkpoint = TaskCheckpoint.of(Json.object("checkpoint", true));
+        TaskState task = createRunningTasks(1, engineID).iterator().next().checkpoint(checkpoint);
+
+        setUpTasks(ImmutableList.of(ImmutableList.of(task)));
+
+        taskRunner.run();
+
+        assertEquals(1, ShortExecutionMockTask.resumedCounter.get());
+    }
+
+    @Test
+    public void whenATaskIsRestartedAfterExecution_ItIsResumedFromLastCheckpoint(){
+        ShortExecutionMockTask.resumedCounter.set(0);
+
+        TaskCheckpoint checkpoint = TaskCheckpoint.of(Json.object("checkpoint", true));
+        TaskState task = createRunningTasks(1, engineID).iterator().next().checkpoint(checkpoint);
+
+        setUpTasks(ImmutableList.of(ImmutableList.of(task)));
+
+        whenTaskResumes((c) -> {
+            assertThat(c, equalTo(checkpoint));
+        });
+
+        taskRunner.run();
+
+        assertEquals(1, ShortExecutionMockTask.resumedCounter.get());
+    }
+
+    @Test
+    public void whenATaskIsStoppedDuringExecution_ItSavesItsLastCheckpoint(){
+        TaskState task = createTask(EndlessExecutionMockTask.class);
+
+        setUpTasks(ImmutableList.of(ImmutableList.of(task)));
+
+        whenTaskStarts(taskRunner::stopTask);
+
+        taskRunner.run();
+
+        assertThat(storage.getState(task.getId()).checkpoint(), notNullValue());
     }
 }

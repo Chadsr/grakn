@@ -18,7 +18,8 @@
 
 package ai.grakn.factory;
 
-import ai.grakn.GraknGraph;
+import ai.grakn.GraknTxType;
+import ai.grakn.graph.internal.AbstractGraknGraph;
 import org.apache.tinkerpop.gremlin.structure.Graph;
 
 /**
@@ -33,16 +34,15 @@ import org.apache.tinkerpop.gremlin.structure.Graph;
  *
  * @author fppt
  *
- * @param <M> A Graph Graph extending {@link GraknGraph} and wrapping a Tinkerpop Graph
  * @param <T> A vendor implementation of a Tinkerpop {@link Graph}
  */
-interface InternalFactory<M extends GraknGraph, T extends Graph> {
+interface InternalFactory<T extends Graph> {
     /**
      *
-     * @param batchLoading A flag which indicates if the graph has batch loading enabled or not.
+     * @param txType The type of transaction to open on the graph
      * @return An instance of Grakn graph
      */
-    M getGraph(boolean batchLoading);
+    AbstractGraknGraph<T> open(GraknTxType txType);
 
     /**
      *

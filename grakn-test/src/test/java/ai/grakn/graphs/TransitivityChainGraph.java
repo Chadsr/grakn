@@ -24,13 +24,13 @@ import ai.grakn.concept.EntityType;
 import ai.grakn.concept.Instance;
 import ai.grakn.concept.RelationType;
 import ai.grakn.concept.RoleType;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 import java.util.function.Consumer;
 
 
 public class TransitivityChainGraph extends TestGraph {
 
-    private final static TypeName key = TypeName.of("index");
+    private final static TypeLabel key = TypeLabel.of("index");
     private final static String gqlFile = "simple-transitivity.gql";
 
     private final int n;
@@ -63,13 +63,13 @@ public class TransitivityChainGraph extends TestGraph {
                 aInstanceIds[i] = putEntity(graph, "a" + i, aEntity, key).getId();
 
         Q.addRelation()
-                .putRolePlayer(Qfrom, aInst)
-                .putRolePlayer(Qto, graph.getConcept(aInstanceIds[0]));
+                .addRolePlayer(Qfrom, aInst)
+                .addRolePlayer(Qto, graph.getConcept(aInstanceIds[0]));
 
         for(int i = 0 ; i < n - 1 ; i++) {
                     Q.addRelation()
-                            .putRolePlayer(Qfrom, graph.getConcept(aInstanceIds[i]))
-                            .putRolePlayer(Qto, graph.getConcept(aInstanceIds[i+1]));
+                            .addRolePlayer(Qfrom, graph.getConcept(aInstanceIds[i]))
+                            .addRolePlayer(Qto, graph.getConcept(aInstanceIds[i+1]));
         }
     }
 }

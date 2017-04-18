@@ -25,21 +25,20 @@ import ai.grakn.concept.Relation;
 import ai.grakn.concept.Resource;
 import ai.grakn.concept.RoleType;
 import ai.grakn.concept.Type;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 import ai.grakn.graql.Graql;
 import ai.grakn.graql.Var;
+import ai.grakn.graql.VarName;
 import ai.grakn.graql.admin.Atomic;
 import ai.grakn.graql.admin.ReasonerQuery;
 import ai.grakn.graql.admin.ValuePredicateAdmin;
 import ai.grakn.graql.admin.VarAdmin;
-import ai.grakn.graql.VarName;
 import ai.grakn.graql.internal.gremlin.EquivalentFragmentSet;
-import ai.grakn.graql.internal.gremlin.fragment.Fragments;
 import ai.grakn.graql.internal.query.InsertQueryExecutor;
 import ai.grakn.graql.internal.reasoner.atom.predicate.Predicate;
 import ai.grakn.util.ErrorMessage;
 import ai.grakn.util.Schema;
-import com.google.common.collect.Sets;
+import com.google.common.collect.ImmutableSet;
 
 import javax.annotation.CheckReturnValue;
 import java.util.Collection;
@@ -47,9 +46,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 
-import static ai.grakn.graql.Graql.name;
+import static ai.grakn.graql.Graql.label;
+import static ai.grakn.graql.internal.gremlin.sets.EquivalentFragmentSets.shortcut;
 import static ai.grakn.graql.internal.reasoner.Utility.getValuePredicates;
-import static ai.grakn.graql.internal.util.StringConverter.typeNameToString;
+import static ai.grakn.graql.internal.util.StringConverter.typeLabelToString;
 import static java.util.stream.Collectors.joining;
 
 /**
@@ -62,32 +62,27 @@ import static java.util.stream.Collectors.joining;
  *
  * When matching, shortcut edges are used to speed up the traversal. The type of the relationship does not matter.
  *
- * When inserting, an implicit relation is created between the instance and the resource, using type names derived from
- * the name of the resource type.
+ * When inserting, an implicit relation is created between the instance and the resource, using type labels derived from
+ * the label of the resource type.
  *
  * @author Felix Chapman
  */
 public class HasResourceProperty extends AbstractVarProperty implements NamedProperty {
 
-    private final Optional<TypeName> resourceType;
+    private final TypeLabel resourceType;
     private final VarAdmin resource;
 
-    private HasResourceProperty(Optional<TypeName> resourceType, VarAdmin resource) {
+    private HasResourceProperty(TypeLabel resourceType, VarAdmin resource) {
         this.resourceType = resourceType;
         this.resource = resource;
     }
 
-    public static HasResourceProperty of(VarAdmin resource) {
-        resource = resource.isa(name(Schema.MetaSchema.RESOURCE.getName())).admin();
-        return new HasResourceProperty(Optional.empty(), resource);
+    public static HasResourceProperty of(TypeLabel resourceType, VarAdmin resource) {
+        resource = resource.isa(label(resourceType)).admin();
+        return new HasResourceProperty(resourceType, resource);
     }
 
-    public static HasResourceProperty of(TypeName resourceType, VarAdmin resource) {
-        resource = resource.isa(name(resourceType)).admin();
-        return new HasResourceProperty(Optional.of(resourceType), resource);
-    }
-
-    public Optional<TypeName> getType() {
+    public TypeLabel getType() {
         return resourceType;
     }
 
@@ -110,7 +105,7 @@ public class HasResourceProperty extends AbstractVarProperty implements NamedPro
     public String getProperty() {
         Stream.Builder<String> repr = Stream.builder();
 
-        resourceType.ifPresent(type -> repr.add(typeNameToString(type)));
+        repr.add(typeLabelToString(resourceType));
 
         if (resource.isUserDefinedName()) {
             repr.add(resource.getPrintableName());
@@ -122,10 +117,9 @@ public class HasResourceProperty extends AbstractVarProperty implements NamedPro
 
     @Override
     public Collection<EquivalentFragmentSet> match(VarName start) {
-        return Sets.newHashSet(EquivalentFragmentSet.create(
-                Fragments.shortcut(Optional.empty(), Optional.empty(), Optional.empty(), start, resource.getVarName()),
-                Fragments.shortcut(Optional.empty(), Optional.empty(), Optional.empty(), resource.getVarName(), start)
-        ));
+        return ImmutableSet.of(
+                shortcut(Optional.empty(), start, Optional.empty(), resource.getVarName(), Optional.empty())
+        );
     }
 
     @Override
@@ -135,11 +129,9 @@ public class HasResourceProperty extends AbstractVarProperty implements NamedPro
 
     @Override
     void checkValidProperty(GraknGraph graph, VarAdmin var) {
-        if (resourceType.isPresent()) {
-            Type type = graph.getType(resourceType.get());
-            if(type == null || !type.isResourceType()) {
-                throw new IllegalStateException(ErrorMessage.MUST_BE_RESOURCE_TYPE.getMessage(resourceType));
-            }
+        Type type = graph.getType(resourceType);
+        if(type == null || !type.isResourceType()) {
+            throw new IllegalStateException(ErrorMessage.MUST_BE_RESOURCE_TYPE.getMessage(resourceType));
         }
     }
 
@@ -147,7 +139,7 @@ public class HasResourceProperty extends AbstractVarProperty implements NamedPro
     public void insert(InsertQueryExecutor insertQueryExecutor, Concept concept) throws IllegalStateException {
         Resource resourceConcept = insertQueryExecutor.getConcept(resource).asResource();
         Instance instance = concept.asInstance();
-        instance.hasResource(resourceConcept);
+        instance.resource(resourceConcept);
     }
 
     @Override
@@ -155,10 +147,8 @@ public class HasResourceProperty extends AbstractVarProperty implements NamedPro
         Optional<ValuePredicateAdmin> predicate =
                 resource.getProperties(ValueProperty.class).map(ValueProperty::getPredicate).findAny();
 
-        TypeName type = resourceType.orElseThrow(() -> failDelete(this));
-
-        RoleType owner = graph.getType(Schema.Resource.HAS_RESOURCE_OWNER.getName(type));
-        RoleType value = graph.getType(Schema.Resource.HAS_RESOURCE_VALUE.getName(type));
+        RoleType owner = graph.getType(Schema.ImplicitType.HAS_OWNER.getLabel(resourceType));
+        RoleType value = graph.getType(Schema.ImplicitType.HAS_VALUE.getLabel(resourceType));
 
         concept.asInstance().relations(owner).stream()
                 .filter(relation -> testPredicate(predicate, relation, value))
@@ -166,7 +156,7 @@ public class HasResourceProperty extends AbstractVarProperty implements NamedPro
     }
 
     private boolean testPredicate(Optional<ValuePredicateAdmin> optPredicate, Relation relation, RoleType resourceRole) {
-        Object value = relation.rolePlayers().get(resourceRole).asResource().getValue();
+        Object value = relation.rolePlayers(resourceRole).iterator().next().asResource().getValue();
 
         return optPredicate
                 .flatMap(ValuePredicateAdmin::getPredicate)
@@ -176,11 +166,7 @@ public class HasResourceProperty extends AbstractVarProperty implements NamedPro
 
     @Override
     public Stream<VarAdmin> getTypes() {
-        if (resourceType.isPresent()) {
-            return Stream.of(name(resourceType.get()).admin());
-        } else {
-            return Stream.empty();
-        }
+        return Stream.of(label(resourceType).admin());
     }
 
     @Override
@@ -204,16 +190,14 @@ public class HasResourceProperty extends AbstractVarProperty implements NamedPro
     @Override
     public Atomic mapToAtom(VarAdmin var, Set<VarAdmin> vars, ReasonerQuery parent) {
         VarName varName = var.getVarName();
-        Optional<TypeName> type = this.getType();
+        TypeLabel type = this.getType();
         VarAdmin valueVar = this.getResource();
         VarName valueVariable = valueVar.getVarName();
         Set<Predicate> predicates = getValuePredicates(valueVariable, valueVar, vars, parent);
 
         //add resource atom
         Var resource = Graql.var(valueVariable);
-        VarAdmin resVar = type
-                .map(t ->Graql.var(varName).has(t, resource))
-                .orElseGet(() -> Graql.var(varName).has(resource)).admin();
+        VarAdmin resVar = Graql.var(varName).has(type, resource).admin();
         return new ai.grakn.graql.internal.reasoner.atom.binary.Resource(resVar, predicates, parent);
     }
 }

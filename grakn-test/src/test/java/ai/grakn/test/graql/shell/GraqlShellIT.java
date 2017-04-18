@@ -19,6 +19,7 @@
 package ai.grakn.test.graql.shell;
 
 import ai.grakn.Grakn;
+import ai.grakn.GraknTxType;
 import ai.grakn.exception.GraknValidationException;
 import ai.grakn.graql.GraqlShell;
 import ai.grakn.test.EngineContext;
@@ -98,7 +99,7 @@ public class GraqlShellIT {
     @After
     public void tearDown() throws GraknValidationException {
         for (String keyspace : keyspaces){
-            Grakn.factory(Grakn.DEFAULT_URI, keyspace).getGraph().clear();
+            Grakn.session(Grakn.DEFAULT_URI, keyspace).open(GraknTxType.WRITE).clear();
         }
     }
 
@@ -267,13 +268,13 @@ public class GraqlShellIT {
     @Test
     public void testAutocompleteFill() throws Exception {
         String result = testShell("match $x sub concep\t;\n");
-        assertThat(result, containsString(Schema.MetaSchema.RELATION.getName().getValue()));
+        assertThat(result, containsString(Schema.MetaSchema.RELATION.getLabel().getValue()));
     }
 
     @Test
     public void testReasonerOff() throws Exception {
         assertShellMatches(
-                "insert man sub entity has-resource name; name sub resource datatype string;",
+                "insert man sub entity has name; name sub resource datatype string;",
                 anything(),
                 "insert person sub entity;",
                 anything(),
@@ -290,7 +291,7 @@ public class GraqlShellIT {
     @Test
     public void testReasoner() throws Exception {
         assertShellMatches(ImmutableList.of("--infer"),
-                "insert man sub entity has-resource name; name sub resource datatype string;",
+                "insert man sub entity has name; name sub resource datatype string;",
                 anything(),
                 "insert person sub entity;",
                 anything(),
@@ -330,10 +331,10 @@ public class GraqlShellIT {
         // Tinker graph doesn't support rollback
         assumeFalse(usingTinker());
 
-        String[] result = testShell("insert E sub entity;\nrollback\nmatch $x type-name E;\n").split("\n");
+        String[] result = testShell("insert E sub entity;\nrollback\nmatch $x label E;\n").split("\n");
 
         // Make sure there are no results for match query
-        assertEquals(">>> match $x type-name E;", result[result.length-2]);
+        assertEquals(">>> match $x label E;", result[result.length-2]);
         assertEquals(">>> ", result[result.length-1]);
     }
 
@@ -348,7 +349,7 @@ public class GraqlShellIT {
     @Test
     public void testGraqlOutput() throws Exception {
         String result = testShell("", "-e", "match $x sub concept;", "-o", "graql");
-        assertThat(result, allOf(containsString("$x"), containsString(Schema.MetaSchema.ENTITY.getName().getValue())));
+        assertThat(result, allOf(containsString("$x"), containsString(Schema.MetaSchema.ENTITY.getLabel().getValue())));
     }
 
     @Test
@@ -440,7 +441,7 @@ public class GraqlShellIT {
     @Test
     public void testDefaultDontDisplayResources() throws Exception {
         assertShellMatches(
-                "insert X sub entity; R sub resource datatype string; X has-resource R; isa X has R 'foo';",
+                "insert X sub entity; R sub resource datatype string; X has R; isa X has R 'foo';",
                 anything(),
                 "match $x isa X;",
                 allOf(containsString("id"), not(containsString("\"foo\"")))
@@ -450,7 +451,7 @@ public class GraqlShellIT {
     @Test
     public void testDisplayResourcesCommand() throws Exception {
         assertShellMatches(
-                "insert X sub entity; R sub resource datatype string; X has-resource R; isa X has R 'foo';",
+                "insert X sub entity; R sub resource datatype string; X has R; isa X has R 'foo';",
                 anything(),
                 "display R;",
                 "match $x isa X;",
@@ -542,11 +543,23 @@ public class GraqlShellIT {
     }
 
     @Test
+    public void whenUserMakesAMistake_SubsequentQueriesStillWork() throws Exception {
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        String out = testShell(
+                "match $x sub concet; aggregate count;\n" +
+                "match $x sub concept; ask;\n",
+                err);
+
+        assertThat(err.toString(), not(containsString("error")));
+        assertThat(out, containsString("True"));
+    }
+
+    @Test
     public void testDuplicateRelation() throws Exception {
         ByteArrayOutputStream err = new ByteArrayOutputStream();
         testShell(
-                "insert R sub relation, has-role R1, has-role R2; R1 sub role; R2 sub role;\n" +
-                        "insert X sub entity, plays-role R1, plays-role R2;\n" +
+                "insert R sub relation, relates R1, relates R2; R1 sub role; R2 sub role;\n" +
+                        "insert X sub entity, plays R1, plays R2;\n" +
                         "insert $x isa X; (R1: $x, R2: $x) isa R;\n" +
                         "match $x isa X; insert (R1: $x, R2: $x) isa R;\n" +
                         "commit\n",

@@ -19,7 +19,6 @@
 package ai.grakn.graph.internal;
 
 import ai.grakn.concept.Entity;
-import ai.grakn.concept.EntityType;
 import ai.grakn.util.Schema;
 import org.apache.tinkerpop.gremlin.structure.Edge;
 import org.junit.Before;
@@ -27,24 +26,23 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNull;
 
 public class EdgeTest extends GraphTestBase{
 
-    private EntityType entityType;
+    private EntityTypeImpl entityType;
     private Entity entity;
     private EdgeImpl edge;
 
     @Before
-    public void setUp(){
-        entityType = graknGraph.putEntityType("My Entity Type");
+    public void createEdge(){
+        entityType = (EntityTypeImpl) graknGraph.putEntityType("My Entity Type");
         entity = entityType.addEntity();
         Edge tinkerEdge = graknGraph.getTinkerTraversal().hasId(entity.getId().getValue()).outE().next();
         edge = new EdgeImpl(tinkerEdge, graknGraph);
     }
 
     @Test
-    public void testEquals(){
+    public void checkEqualityBetweenEdgesBasedOnID(){
         Entity entity2 = entityType.addEntity();
         Edge tinkerEdge = graknGraph.getTinkerTraversal().hasId(entity2.getId().getValue()).outE().next();
         EdgeImpl edge2 = new EdgeImpl(tinkerEdge, graknGraph);
@@ -54,25 +52,17 @@ public class EdgeTest extends GraphTestBase{
     }
 
     @Test
-    public void testGetSource() throws Exception {
+    public void whenGettingTheSourceOfAnEdge_ReturnTheConceptTheEdgeComesFrom() throws Exception {
         assertEquals(entity, edge.getSource());
     }
 
     @Test
-    public void testGetTarget() throws Exception {
-        assertEquals(entityType, edge.getTarget());
+    public void whenGettingTheTargetOfAnEdge_ReturnTheConceptTheEdgePointsTowards() throws Exception {
+        assertEquals(entityType.currentShard(), edge.getTarget());
     }
 
     @Test
-    public void testGetType() throws Exception {
+    public void whenGettingTheLabelOfAnEdge_ReturnExpectedType() throws Exception {
         assertEquals(Schema.EdgeLabel.ISA, edge.getType());
     }
-
-    @Test
-    public void testProperty() throws Exception {
-        edge.setProperty(Schema.EdgeProperty.ROLE_TYPE, "role");
-        assertEquals("role", edge.getProperty(Schema.EdgeProperty.ROLE_TYPE));
-        assertNull(edge.getProperty(Schema.EdgeProperty.FROM_TYPE_NAME));
-    }
-
 }

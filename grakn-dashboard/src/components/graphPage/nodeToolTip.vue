@@ -17,10 +17,8 @@ along with Grakn. If not, see <http://www.gnu.org/licenses/gpl.txt>.
 -->
 
 <template>
-<div id="tool-tip" class="node-panel z-depth-1-half" v-show="showToolTip">
-    <span class="panel-body">
+<div id="tool-tip" class="node-panel z-depth-1-half noselect" v-show="showToolTip">
         <div class="dd-item"><span class="list-key"><font>{{nodeType}}</font></span></div>
-</span>
 </div>
 </template>
 
@@ -48,35 +46,36 @@ font {
 
 <script>
 export default {
-    name: "NodeToolTip",
-    props: ['showToolTip', 'mouseEvent', 'graphOffsetTop'],
-    data: function() {
-        return {
-            nodeType: "",
-            toolTipElement: undefined,
-        }
+  name: 'NodeToolTip',
+  props: ['showToolTip', 'mouseEvent', 'graphOffsetTop'],
+  data () {
+      return {
+          nodeType: '',
+          toolTipElement: undefined,
+        };
     },
-    watch: {
-        showToolTip(newValue) {
-            if (newValue) {
-                const nodeId = this.mouseEvent.node;
-                const nodeDOMCoordinates = visualiser.network.canvasToDOM(visualiser.network.getPositions(nodeId)[nodeId]);
-                const nodeBoundingBox = visualiser.network.canvasToDOM({x:0,y:visualiser.network.getBoundingBox(nodeId).top});
-                const offsetX = $("#tool-tip").width()/2;
-                const offsetY =  $("#tool-tip").height() + 10;
+  watch: {
+      showToolTip(newValue) {
+          if (newValue) {
+              const nodeId = this.mouseEvent.node;
+              const nodeDOMCoordinates = visualiser.network.canvasToDOM(visualiser.network.getPositions(nodeId)[nodeId]);
+              const nodeBoundingBox = visualiser.network.canvasToDOM({ x: 0, y: visualiser.network.getBoundingBox(nodeId).top });
 
-                this.toolTipElement.style.left = (nodeDOMCoordinates.x - offsetX) + 'px';
-                this.toolTipElement.style.top = (nodeBoundingBox.y - offsetY)+ "px";
-                const nodeObj = visualiser.getNode(nodeId);
-                this.nodeType = (nodeObj.type != "") ? nodeObj.type : nodeObj.baseType;
+              const offsetX = $('#tool-tip').width() / 2;
+              const offsetY = $('#tool-tip').height() + 10;
+
+              this.toolTipElement.style.left = `${nodeDOMCoordinates.x - offsetX  }px`;
+              this.toolTipElement.style.top = `${nodeBoundingBox.y - offsetY }px`;
+              const nodeObj = visualiser.getNode(nodeId);
+              this.nodeType = (nodeObj.type !== '') ? nodeObj.type : nodeObj.baseType;
             }
-        }
+        },
     },
-    mounted: function() {
+  mounted () {
       this.$nextTick(function nextTickVisualiser() {
-        this.toolTipElement=document.getElementById('tool-tip');
+        this.toolTipElement = document.getElementById('tool-tip');
       });
     },
-    methods: {}
-}
+  methods: {},
+};
 </script>

@@ -73,7 +73,7 @@ class Validator {
                 }
             } else if (nextToValidate.isCasting()) {
                 validateCasting((CastingImpl) nextToValidate);
-            } else if (nextToValidate.isType() && !Schema.MetaSchema.isMetaName(nextToValidate.asType().getName())) {
+            } else if (nextToValidate.isType() && !Schema.MetaSchema.isMetaLabel(nextToValidate.asType().getLabel())) {
                 validateType((TypeImpl) nextToValidate);
 
                 if (nextToValidate.isRoleType()) {
@@ -110,7 +110,7 @@ class Validator {
      * @param casting The casting to validate
      */
     private void validateCasting(CastingImpl casting){
-        ValidateGlobalRules.validatePlaysRoleStructure(casting).ifPresent(errorsFound::add);
+        ValidateGlobalRules.validatePlaysStructure(casting).ifPresent(errorsFound::add);
     }
 
     /**
@@ -126,7 +126,7 @@ class Validator {
      * @param roleType The roleType to validate
      */
     private void validateRoleType(RoleTypeImpl roleType){
-        ValidateGlobalRules.validateHasSingleIncomingHasRoleEdge(roleType).ifPresent(errorsFound::add);
+        ValidateGlobalRules.validateHasSingleIncomingRelatesEdge(roleType).ifPresent(errorsFound::add);
     }
 
     /**

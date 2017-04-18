@@ -19,7 +19,9 @@
 package ai.grakn.test.migration;
 
 import ai.grakn.GraknGraph;
-import ai.grakn.GraknGraphFactory;
+import ai.grakn.GraknSession;
+import ai.grakn.GraknTxType;
+import ai.grakn.concept.Concept;
 import ai.grakn.concept.Entity;
 import ai.grakn.concept.Instance;
 import ai.grakn.concept.Relation;
@@ -27,7 +29,7 @@ import ai.grakn.concept.RelationType;
 import ai.grakn.concept.Resource;
 import ai.grakn.concept.ResourceType;
 import ai.grakn.concept.RoleType;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 import ai.grakn.exception.GraknValidationException;
 import ai.grakn.util.Schema;
 import com.google.common.io.Files;
@@ -59,14 +61,13 @@ public class MigratorTestUtils {
         return new File(MigratorTestUtils.class.getResource(component + "/" + fileName).getPath());
     }
 
-    public static void load(GraknGraphFactory factory, File ontology) {
-        try(GraknGraph graph = factory.getGraph()) {
+    public static void load(GraknSession factory, File ontology) {
+        try(GraknGraph graph = factory.open(GraknTxType.WRITE)) {
             graph.graql()
                     .parse(Files.readLines(ontology, StandardCharsets.UTF_8).stream().collect(joining("\n")))
                     .execute();
 
-            graph.commitOnClose();
-            graph.close();
+            graph.commit();
         } catch (IOException |GraknValidationException e){
             throw new RuntimeException(e);
         }
@@ -80,43 +81,43 @@ public class MigratorTestUtils {
                 .findFirst().get());
     }
 
-    public static void assertRelationBetweenInstancesExists(GraknGraph graph, Instance instance1, Instance instance2, TypeName relation){
+    public static void assertRelationBetweenInstancesExists(GraknGraph graph, Instance instance1, Instance instance2, TypeLabel relation){
         RelationType relationType = graph.getType(relation);
 
-        RoleType role1 = instance1.playsRoles().stream().filter(r -> r.relationTypes().stream().anyMatch(rel -> rel.equals(relationType))).findFirst().get();
-        assertTrue(instance1.relations(role1).stream().anyMatch(rel -> rel.rolePlayers().values().contains(instance2)));
+        RoleType role1 = instance1.plays().stream().filter(r -> r.relationTypes().stream().anyMatch(rel -> rel.equals(relationType))).findFirst().get();
+        assertTrue(instance1.relations(role1).stream().anyMatch(rel -> rel.rolePlayers().contains(instance2)));
     }
 
 
-    public static Instance getProperty(GraknGraph graph, Instance instance, String name) {
-        assertEquals(getProperties(graph, instance, name).size(), 1);
-        return getProperties(graph, instance, name).iterator().next();
+    public static Instance getProperty(GraknGraph graph, Instance instance, String label) {
+        assertEquals(getProperties(graph, instance, label).size(), 1);
+        return getProperties(graph, instance, label).iterator().next();
     }
 
-    public static Collection<Instance> getProperties(GraknGraph graph, Instance instance, String name) {
-        RelationType relation = graph.getRelationType(name);
+    public static Collection<Instance> getProperties(GraknGraph graph, Instance instance, String label) {
+        RelationType relation = graph.getRelationType(label);
 
         Set<Instance> instances = new HashSet<>();
 
         relation.instances().stream()
-                .filter(i -> i.rolePlayers().values().contains(instance))
-                .forEach(i -> instances.addAll(i.rolePlayers().values()));
+                .filter(i -> i.rolePlayers().contains(instance))
+                .forEach(i -> instances.addAll(i.rolePlayers()));
 
         instances.remove(instance);
         return instances;
     }
 
-    public static Resource getResource(GraknGraph graph, Instance instance, TypeName name) {
-        assertEquals(getResources(graph, instance, name).count(), 1);
-        return getResources(graph, instance, name).findAny().get();
+    public static Resource getResource(GraknGraph graph, Instance instance, TypeLabel label) {
+        assertEquals(getResources(graph, instance, label).count(), 1);
+        return getResources(graph, instance, label).findAny().get();
     }
 
-    public static Stream<Resource> getResources(GraknGraph graph, Instance instance, TypeName name) {
-        RoleType roleOwner = graph.getType(Schema.Resource.HAS_RESOURCE_OWNER.getName(name));
-        RoleType roleOther = graph.getType(Schema.Resource.HAS_RESOURCE_VALUE.getName(name));
+    public static Stream<Resource> getResources(GraknGraph graph, Instance instance, TypeLabel label) {
+        RoleType roleOwner = graph.getType(Schema.ImplicitType.HAS_OWNER.getLabel(label));
+        RoleType roleOther = graph.getType(Schema.ImplicitType.HAS_VALUE.getLabel(label));
 
         Collection<Relation> relations = instance.relations(roleOwner);
-        return relations.stream().map(r -> r.rolePlayers().get(roleOther).asResource());
+        return relations.stream().flatMap(r -> r.rolePlayers(roleOther).stream()).map(Concept::asResource);
     }
 
     /**
@@ -161,7 +162,7 @@ public class MigratorTestUtils {
         assertNotNull(poison);
         assertNotNull(bulbasaur);
 
-        assertRelationBetweenInstancesExists(graph, bulbasaur, grass, relation.getName());
-        assertRelationBetweenInstancesExists(graph, bulbasaur, poison, relation.getName());
+        assertRelationBetweenInstancesExists(graph, bulbasaur, grass, relation.getLabel());
+        assertRelationBetweenInstancesExists(graph, bulbasaur, poison, relation.getLabel());
     }
 }

@@ -18,7 +18,6 @@
 
 package ai.grakn.graph.internal;
 
-import ai.grakn.concept.Concept;
 import ai.grakn.concept.Resource;
 import ai.grakn.concept.ResourceType;
 import ai.grakn.exception.InvalidConceptValueException;
@@ -26,7 +25,6 @@ import ai.grakn.util.ErrorMessage;
 import ai.grakn.util.Schema;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 
-import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -53,10 +51,9 @@ class ResourceTypeImpl<D> extends TypeImpl<ResourceType<D>, Resource<D>> impleme
         super(graknGraph, v);
     }
 
-    ResourceTypeImpl(AbstractGraknGraph graknGraph, Vertex v, ResourceType<D> type, DataType<D> dataType, Boolean isUnique) {
+    ResourceTypeImpl(AbstractGraknGraph graknGraph, Vertex v, ResourceType<D> type, DataType<D> dataType) {
         super(graknGraph, v, type);
         setImmutableProperty(Schema.ConceptProperty.DATA_TYPE, dataType, getDataType(), DataType::getName);
-        setImmutableProperty(Schema.ConceptProperty.IS_UNIQUE, isUnique, getProperty(Schema.ConceptProperty.IS_UNIQUE), Function.identity());
     }
 
     private ResourceTypeImpl(ResourceTypeImpl resourceType){
@@ -77,7 +74,7 @@ class ResourceTypeImpl<D> extends TypeImpl<ResourceType<D>, Resource<D>> impleme
     @Override
     public ResourceType<D> setRegex(String regex) {
         if(getDataType() == null || !getDataType().equals(DataType.STRING)){
-            throw new UnsupportedOperationException(ErrorMessage.REGEX_NOT_STRING.getMessage(getName()));
+            throw new UnsupportedOperationException(ErrorMessage.REGEX_NOT_STRING.getMessage(getLabel()));
         }
 
         if(regex != null) {
@@ -87,7 +84,7 @@ class ResourceTypeImpl<D> extends TypeImpl<ResourceType<D>, Resource<D>> impleme
                 String value = (String) resource.getValue();
                 matcher = pattern.matcher(value);
                 if(!matcher.matches()){
-                    throw new InvalidConceptValueException(ErrorMessage.REGEX_INSTANCE_FAILURE.getMessage(regex, resource.getId(), value, getName()));
+                    throw new InvalidConceptValueException(ErrorMessage.REGEX_INSTANCE_FAILURE.getMessage(regex, resource.getId(), value, getLabel()));
                 }
             }
         }
@@ -99,23 +96,15 @@ class ResourceTypeImpl<D> extends TypeImpl<ResourceType<D>, Resource<D>> impleme
     @Override
     public Resource<D> putResource(D value) {
         if(value == null) throw new InvalidConceptValueException(ErrorMessage.NULL_VALUE.getMessage("resource value"));
-
-        Resource<D> resource = getResource(value);
-        if(resource == null){
-            resource = addInstance(Schema.BaseType.RESOURCE, (vertex, type) ->
-                    getGraknGraph().getElementFactory().buildResource(vertex, type, value));
-        }
-        return resource;
+        return putInstance(Schema.BaseType.RESOURCE,
+                () -> getResource(value), (vertex, type) ->
+                getGraknGraph().getElementFactory().buildResource(vertex, type, value));
     }
 
     @Override
     public <V> Resource<V> getResource(V value) {
-        String index = ResourceImpl.generateResourceIndex(this, value.toString());
-        Concept concept = getGraknGraph().getConcept(Schema.ConceptProperty.INDEX, index);
-        if(concept != null){
-            return concept.asResource();
-        }
-        return null;
+        String index = Schema.generateResourceIndex(getLabel(), value.toString());
+        return getGraknGraph().getConcept(Schema.ConceptProperty.INDEX, index);
     }
 
     /**
@@ -136,12 +125,4 @@ class ResourceTypeImpl<D> extends TypeImpl<ResourceType<D>, Resource<D>> impleme
         return getProperty(Schema.ConceptProperty.REGEX);
     }
 
-    /**
-     *
-     * @return True if the resource type is unique and its instances are limited to one connection to an entity
-     */
-    @Override
-    public Boolean isUnique() {
-        return getPropertyBoolean(Schema.ConceptProperty.IS_UNIQUE);
-    }
 }

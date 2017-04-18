@@ -20,7 +20,7 @@ package ai.grakn.graql.internal.parser;
 
 import ai.grakn.concept.ConceptId;
 import ai.grakn.concept.ResourceType;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 import ai.grakn.graql.Aggregate;
 import ai.grakn.graql.AggregateQuery;
 import ai.grakn.graql.AskQuery;
@@ -65,7 +65,6 @@ import java.util.stream.Stream;
 
 import static ai.grakn.graql.Graql.and;
 import static ai.grakn.graql.Graql.eq;
-import static ai.grakn.graql.Graql.name;
 import static ai.grakn.graql.Graql.var;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toSet;
@@ -337,18 +336,18 @@ class QueryVisitor extends GraqlBaseVisitor {
     }
 
     @Override
-    public Set<TypeName> visitInList(GraqlParser.InListContext ctx) {
-        return visitNameList(ctx.nameList());
+    public Set<TypeLabel> visitInList(GraqlParser.InListContext ctx) {
+        return visitLabelList(ctx.labelList());
     }
 
     @Override
-    public Set<TypeName> visitOfList(GraqlParser.OfListContext ctx) {
-        return visitNameList(ctx.nameList());
+    public Set<TypeLabel> visitOfList(GraqlParser.OfListContext ctx) {
+        return visitLabelList(ctx.labelList());
     }
 
     @Override
-    public Set<TypeName> visitNameList(GraqlParser.NameListContext ctx) {
-        return ctx.name().stream().map(this::visitName).collect(toSet());
+    public Set<TypeLabel> visitLabelList(GraqlParser.LabelListContext ctx) {
+        return ctx.label().stream().map(this::visitLabel).collect(toSet());
     }
 
     @Override
@@ -434,13 +433,13 @@ class QueryVisitor extends GraqlBaseVisitor {
     }
 
     @Override
-    public UnaryOperator<Var> visitPropName(GraqlParser.PropNameContext ctx) {
-        return var -> var.name(visitName(ctx.name()));
+    public UnaryOperator<Var> visitPropLabel(GraqlParser.PropLabelContext ctx) {
+        return var -> var.label(visitLabel(ctx.label()));
     }
 
     @Override
     public UnaryOperator<Var> visitPropValue(GraqlParser.PropValueContext ctx) {
-        return var -> var.value(visitPredicate(ctx.predicate()));
+        return var -> var.val(visitPredicate(ctx.predicate()));
     }
 
     @Override
@@ -454,32 +453,28 @@ class QueryVisitor extends GraqlBaseVisitor {
     }
 
     @Override
-    public UnaryOperator<Var> visitPropHasVariable(GraqlParser.PropHasVariableContext ctx) {
-        Var resource = var(getVariable(ctx.VARIABLE()));
-
-        if (ctx.name() != null) {
-            TypeName type = visitName(ctx.name());
-            return var -> var.has(type, resource);
-        } else {
-            return var -> var.has(resource);
-        }
-    }
-
-    @Override
     public UnaryOperator<Var> visitPropHas(GraqlParser.PropHasContext ctx) {
-        TypeName type = visitName(ctx.name());
-        Var resource = var().value(visitPredicate(ctx.predicate()));
-        return var -> var.has(type, resource);
+        TypeLabel type = visitLabel(ctx.label());
+
+        Var resource = ctx.VARIABLE() != null ? var(getVariable(ctx.VARIABLE())) : var();
+
+        if (ctx.predicate() != null) {
+            resource = resource.val(visitPredicate(ctx.predicate()));
+        }
+
+        Var finalResource = resource;
+
+        return var -> var.has(type, finalResource);
     }
 
     @Override
     public UnaryOperator<Var> visitPropResource(GraqlParser.PropResourceContext ctx) {
-        return var -> var.hasResource(visitVariable(ctx.variable()));
+        return var -> var.has(visitVariable(ctx.variable()));
     }
 
     @Override
     public UnaryOperator<Var> visitPropKey(GraqlParser.PropKeyContext ctx) {
-        return var -> var.hasKey(visitVariable(ctx.variable()));
+        return var -> var.key(visitVariable(ctx.variable()));
     }
 
     @Override
@@ -527,18 +522,8 @@ class QueryVisitor extends GraqlBaseVisitor {
     }
 
     @Override
-    public UnaryOperator<Var> visitHasRole(GraqlParser.HasRoleContext ctx) {
-        return var -> var.hasRole(visitVariable(ctx.variable()));
-    }
-
-    @Override
-    public UnaryOperator<Var> visitPlaysRole(GraqlParser.PlaysRoleContext ctx) {
-        return var -> var.playsRole(visitVariable(ctx.variable()));
-    }
-
-    @Override
-    public UnaryOperator<Var> visitHasScope(GraqlParser.HasScopeContext ctx) {
-        return var -> var.hasScope(var(getVariable(ctx.VARIABLE())));
+    public UnaryOperator<Var> visitRelates(GraqlParser.RelatesContext ctx) {
+        return var -> var.relates(visitVariable(ctx.variable()));
     }
 
     @Override
@@ -547,8 +532,13 @@ class QueryVisitor extends GraqlBaseVisitor {
     }
 
     @Override
-    public TypeName visitName(GraqlParser.NameContext ctx) {
-        return TypeName.of(visitIdentifier(ctx.identifier()));
+    public UnaryOperator<Var> visitHasScope(GraqlParser.HasScopeContext ctx) {
+        return var -> var.hasScope(var(getVariable(ctx.VARIABLE())));
+    }
+
+    @Override
+    public TypeLabel visitLabel(GraqlParser.LabelContext ctx) {
+        return TypeLabel.of(visitIdentifier(ctx.identifier()));
     }
 
     @Override
@@ -569,8 +559,8 @@ class QueryVisitor extends GraqlBaseVisitor {
     public Var visitVariable(GraqlParser.VariableContext ctx) {
         if (ctx == null) {
             return var();
-        } else if (ctx.name() != null) {
-            return name(visitName(ctx.name()));
+        } else if (ctx.label() != null) {
+            return Graql.label(visitLabel(ctx.label()));
         } else {
             return var(getVariable(ctx.VARIABLE()));
         }
@@ -644,20 +634,6 @@ class QueryVisitor extends GraqlBaseVisitor {
     @Override
     public Boolean visitValueBoolean(GraqlParser.ValueBooleanContext ctx) {
         return Boolean.valueOf(ctx.BOOLEAN().getText());
-    }
-
-    @Override
-    public Pattern visitPatternSep(GraqlParser.PatternSepContext ctx) {
-        return visitPattern(ctx.pattern());
-    }
-
-    @Override
-    public Object visitBatchPattern(GraqlParser.BatchPatternContext ctx) {
-        if (ctx.patternSep() != null) {
-            return visitPatternSep(ctx.patternSep());
-        } else {
-            return ctx.getText();
-        }
     }
 
     private MatchQuery visitMatchQuery(GraqlParser.MatchQueryContext ctx) {

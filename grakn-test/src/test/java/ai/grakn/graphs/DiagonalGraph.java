@@ -23,12 +23,12 @@ import ai.grakn.concept.ConceptId;
 import ai.grakn.concept.EntityType;
 import ai.grakn.concept.RelationType;
 import ai.grakn.concept.RoleType;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 import java.util.function.Consumer;
 
 public class DiagonalGraph extends TestGraph {
 
-    private final static TypeName key = TypeName.of("name");
+    private final static TypeLabel key = TypeLabel.of("name");
     private final static String gqlFile = "diagonal-test.gql";
 
     private final int n;
@@ -71,15 +71,15 @@ public class DiagonalGraph extends TestGraph {
         for(int i = 0 ; i < n ; i++) {
             for (int j = 0; j < m; j++) {
                 if ( i < n - 1 ) {
-                    horizontal.addRelation()
-                            .putRolePlayer(relFrom, graph.getConcept(instanceIds[i][j]))
-                            .putRolePlayer(relTo, graph.getConcept(instanceIds[i+1][j]));
+                    vertical.addRelation()
+                            .addRolePlayer(relFrom, graph.getConcept(instanceIds[i][j]))
+                            .addRolePlayer(relTo, graph.getConcept(instanceIds[i+1][j]));
                     inserts++;
                 }
                 if ( j < m - 1){
-                    vertical.addRelation()
-                            .putRolePlayer(relFrom, graph.getConcept(instanceIds[i][j]))
-                            .putRolePlayer(relTo, graph.getConcept(instanceIds[i][j+1]));
+                    horizontal.addRelation()
+                            .addRolePlayer(relFrom, graph.getConcept(instanceIds[i][j]))
+                            .addRolePlayer(relTo, graph.getConcept(instanceIds[i][j+1]));
                     inserts++;
                 }
                 if (inserts % 100 == 0) System.out.println("rel inserts: " + inserts);

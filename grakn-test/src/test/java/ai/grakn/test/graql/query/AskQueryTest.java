@@ -27,7 +27,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
-import static ai.grakn.graql.Graql.name;
+import static ai.grakn.graql.Graql.label;
 import static ai.grakn.graql.Graql.var;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -61,13 +61,13 @@ public class AskQueryTest {
     public void testNegativeQueryShortcutEdge() {
         assertFalse(qb.match(
                 var().rel("x").rel("y").isa("directed-by"),
-                var("x").value("Apocalypse Now"),
-                var("y").value("Martin Sheen")
+                var("x").val("Apocalypse Now"),
+                var("y").val("Martin Sheen")
         ).ask().execute());
     }
 
     @Test
     public void testAskNoVariables() {
-        assertTrue(qb.match(name("person").playsRole("actor")).ask().execute());
+        assertTrue(qb.match(label("person").plays("actor")).ask().execute());
     }
 }

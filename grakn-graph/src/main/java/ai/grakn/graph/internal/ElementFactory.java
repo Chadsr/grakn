@@ -27,12 +27,16 @@ import ai.grakn.concept.RoleType;
 import ai.grakn.concept.RuleType;
 import ai.grakn.graql.Pattern;
 import ai.grakn.util.Schema;
+import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.apache.tinkerpop.gremlin.structure.Edge;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Iterator;
 import java.util.function.Function;
+
+import static org.apache.tinkerpop.gremlin.structure.T.label;
 
 /**
  * <p>
@@ -82,8 +86,8 @@ final class ElementFactory {
     }
 
     // ---------------------------------------- Building Resource Types  -----------------------------------------------
-    <V> ResourceTypeImpl<V> buildResourceType(Vertex vertex, ResourceType<V> type, ResourceType.DataType<V> dataType, Boolean isUnique){
-        return getOrBuildConcept(vertex, (v) -> new ResourceTypeImpl<>(graknGraph, v, type, dataType, isUnique));
+    <V> ResourceTypeImpl<V> buildResourceType(Vertex vertex, ResourceType<V> type, ResourceType.DataType<V> dataType){
+        return getOrBuildConcept(vertex, (v) -> new ResourceTypeImpl<>(graknGraph, v, type, dataType));
     }
 
     // ------------------------------------------ Building Resources
@@ -134,21 +138,17 @@ final class ElementFactory {
      * @return A concept built to the correct type
      */
     <X extends Concept> X buildConcept(Vertex v){
-        if(!graknGraph.validVertex(v)){
-            LOG.warn("Found vertex [" + v + "] which is no longer valid ignoring . . . ");
-            return null;
-        }
-
         Schema.BaseType type;
+        //Check if the vertex is valid
         try {
-            type = Schema.BaseType.valueOf(v.label());
-        } catch (IllegalArgumentException e){
-            LOG.warn("Found vertex [" + v + "] which has an invalid base type [" + v.label() + "] ignoring . . . ");
+            graknGraph.validVertex(v);
+            type = getBaseType(v);
+        } catch (IllegalStateException e){
+            LOG.warn("Invalid vertex [" + v + "] due to " + e.getMessage(), e);
             return null;
         }
 
         ConceptId conceptId = ConceptId.of(v.id());
-
         if(!graknGraph.getConceptLog().isConceptCached(conceptId)){
             ConceptImpl concept;
             switch (type) {
@@ -186,12 +186,33 @@ final class ElementFactory {
                     concept = new RuleTypeImpl(graknGraph, v);
                     break;
                 default:
-                    throw new RuntimeException("Unknown base type");
+                    throw new RuntimeException("Unknown base type [" + v.label() + "]");
             }
             graknGraph.getConceptLog().cacheConcept(concept);
         }
 
         return graknGraph.getConceptLog().getCachedConcept(conceptId);
+    }
+
+    //TODO: Simplify this if it does not make a difference to large loading
+    private Schema.BaseType getBaseType(Vertex vertex){
+        try {
+            return Schema.BaseType.valueOf(vertex.label());
+        } catch (IllegalArgumentException e){
+            //Base type appears to be invalid. Let's try getting the type via the isa edge
+            Iterator<Edge> iterator = vertex.edges(Direction.OUT, Schema.EdgeLabel.SHARD.getLabel());
+            if(iterator.hasNext()){
+                Vertex shardVertex = iterator.next().inVertex();
+                Vertex typeVertex = shardVertex.edges(Direction.OUT, Schema.EdgeLabel.ISA.getLabel()).next().inVertex();
+                String label = typeVertex.label();
+                if(label.equals(Schema.BaseType.ENTITY_TYPE.name())) return Schema.BaseType.ENTITY;
+                if(label.equals(Schema.BaseType.ROLE_TYPE.name())) return Schema.BaseType.CASTING;
+                if(label.equals(Schema.BaseType.RELATION_TYPE.name())) return Schema.BaseType.RELATION;
+                if(label.equals(Schema.BaseType.RESOURCE_TYPE.name())) return Schema.BaseType.RESOURCE;
+                if(label.equals(Schema.BaseType.RULE_TYPE.name())) return Schema.BaseType.RULE;
+            }
+        }
+        throw new IllegalStateException("Could not determine the base type of vertex [" + vertex + "]");
     }
 
     EdgeImpl buildEdge(Edge edge){

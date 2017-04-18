@@ -19,17 +19,16 @@
 package ai.grakn.graphs;
 
 import ai.grakn.GraknGraph;
-import ai.grakn.GraknGraphFactory;
 import ai.grakn.concept.EntityType;
 import ai.grakn.concept.RelationType;
 import ai.grakn.concept.RoleType;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 
 import java.util.function.Consumer;
 
 public class PathGraphII extends TestGraph {
 
-    private final static TypeName key = TypeName.of("index");
+    private final static TypeLabel key = TypeLabel.of("index");
     final static String gqlFile = "path-test.gql";
 
     private final int n;
@@ -70,20 +69,20 @@ public class PathGraphII extends TestGraph {
         }
 
         arc.addRelation()
-                .putRolePlayer(arcFrom, getInstance(graph, "a0"))
-                .putRolePlayer(arcTo, getInstance(graph, "a0,0"));
+                .addRolePlayer(arcFrom, getInstance(graph, "a0"))
+                .addRolePlayer(arcTo, getInstance(graph, "a0,0"));
 
         for(int i = 0 ; i < n ;i++) {
             for (int j = 0; j < m; j++) {
                 if (j < n - 1) {
                     arc.addRelation()
-                            .putRolePlayer(arcFrom, getInstance(graph, "a" + i + "," + j))
-                            .putRolePlayer(arcTo, getInstance(graph, "a" + i + "," + (j + 1)));
+                            .addRolePlayer(arcFrom, getInstance(graph, "a" + i + "," + j))
+                            .addRolePlayer(arcTo, getInstance(graph, "a" + i + "," + (j + 1)));
                 }
                 if (i < m - 1) {
                     arc.addRelation()
-                            .putRolePlayer(arcFrom, getInstance(graph, "a" + i + "," + j))
-                            .putRolePlayer(arcTo, getInstance(graph, "a" + (i + 1) + "," + j));
+                            .addRolePlayer(arcFrom, getInstance(graph, "a" + i + "," + j))
+                            .addRolePlayer(arcTo, getInstance(graph, "a" + (i + 1) + "," + j));
                 }
             }
         }

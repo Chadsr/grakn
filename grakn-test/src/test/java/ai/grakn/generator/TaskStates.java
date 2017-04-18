@@ -19,14 +19,13 @@
 
 package ai.grakn.generator;
 
-import ai.grakn.engine.tasks.BackgroundTask;
 import ai.grakn.engine.TaskId;
+import ai.grakn.engine.tasks.BackgroundTask;
 import ai.grakn.engine.tasks.TaskSchedule;
 import ai.grakn.engine.tasks.TaskState;
 import ai.grakn.engine.tasks.mock.FailingMockTask;
 import ai.grakn.engine.tasks.mock.LongExecutionMockTask;
 import ai.grakn.engine.tasks.mock.ShortExecutionMockTask;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
@@ -36,6 +35,7 @@ import mjson.Json;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
+import java.time.Instant;
 
 import static java.lang.annotation.ElementType.ANNOTATION_TYPE;
 import static java.lang.annotation.ElementType.FIELD;
@@ -45,7 +45,11 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 public class TaskStates extends Generator<TaskState> {
 
-    private boolean newTask = false;
+    // TODO: make this generate more classes
+    @SuppressWarnings("unchecked")
+    private Class<? extends BackgroundTask>[] classes = new Class[] {
+            LongExecutionMockTask.class, ShortExecutionMockTask.class, FailingMockTask.class
+    };
 
     public TaskStates() {
         super(TaskState.class);
@@ -53,16 +57,9 @@ public class TaskStates extends Generator<TaskState> {
 
     @Override
     public TaskState generate(SourceOfRandomness random, GenerationStatus status) {
-        // TODO: make this generate more classes
-        Class<? extends BackgroundTask> taskClass = random.choose(ImmutableList.of(LongExecutionMockTask.class, ShortExecutionMockTask.class, FailingMockTask.class));
+        Class<? extends BackgroundTask> taskClass = random.choose(classes);
 
-        TaskId taskId;
-
-        if (newTask) {
-            taskId = TaskId.generate();
-        } else {
-            taskId = TaskId.of(random.choose(ImmutableSet.of("A", "B", "C")));
-        }
+        TaskId taskId = TaskId.generate();
 
         // TODO: Make this generate random task statuses
 
@@ -70,20 +67,23 @@ public class TaskStates extends Generator<TaskState> {
 
         // TODO: generate all the other params of a task state
 
+        // A bit in the past, because Instant is not monotonic
+        TaskSchedule schedule = TaskSchedule.at(Instant.now().minusSeconds(60));
+
         Json configuration = Json.object();
-        TaskState taskState = TaskState.of(taskClass, creator, TaskSchedule.now(), configuration, taskId);
+        TaskState taskState = TaskState.of(taskClass, creator, schedule, configuration, taskId);
         configuration.set("id", taskState.getId().getValue());
         return taskState;
     }
 
-    public void configure(NewTask newTask) {
-        this.newTask = newTask.value();
+    public void configure(WithClass withClass) {
+        this.classes = withClass.value();
     }
 
     @Target({PARAMETER, FIELD, ANNOTATION_TYPE, TYPE_USE})
     @Retention(RUNTIME)
     @GeneratorConfiguration
-    public @interface NewTask {
-        boolean value() default true;
+    public @interface WithClass {
+        Class<? extends BackgroundTask>[] value() default {};
     }
 }

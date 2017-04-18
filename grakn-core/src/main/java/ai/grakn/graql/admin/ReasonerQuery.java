@@ -19,8 +19,8 @@
 package ai.grakn.graql.admin;
 
 import ai.grakn.GraknGraph;
-import ai.grakn.concept.Concept;
 import ai.grakn.concept.Type;
+import ai.grakn.graql.MatchQuery;
 import ai.grakn.graql.VarName;
 import java.util.Map;
 import java.util.Set;
@@ -36,6 +36,10 @@ import java.util.stream.Stream;
  *
  */
 public interface ReasonerQuery{
+
+
+    ReasonerQuery copy();
+
     /**
      * @return GraknGraph associated with this reasoner query
      */
@@ -57,6 +61,11 @@ public interface ReasonerQuery{
     Set<Atomic> getAtoms();
 
     /**
+     * @return corresponding MatchQuery
+     */
+    MatchQuery getMatchQuery();
+
+    /**
      * @return true if any of the atoms constituting the query can be resolved through a rule
      */
     boolean isRuleResolvable();
@@ -70,21 +79,22 @@ public interface ReasonerQuery{
 
     /**
      * change each variable occurrence according to provided mappings (apply unifiers {[from, to]_i})
-     * @param unifiers contain unifiers (variable mappings) to be applied
+     * @param unifier (variable mappings) to be applied
      */
-    void unify(Map<VarName, VarName> unifiers);
+    void unify(Unifier unifier);
 
     /**
      * @return
      */
-    Map<VarName, VarName> getUnifiers(ReasonerQuery parent);
+    Unifier getUnifier(ReasonerQuery parent);
 
     /**
      * resolves the query
      * @param materialise materialisation flag
+     * @param explanation whether to provide explanation
      * @return stream of answers
      */
-    Stream<Map<VarName, Concept>> resolve(boolean materialise);
+    Stream<Answer> resolve(boolean materialise, boolean explanation);
 
     /**
      * @return map of variable name - corresponding type pairs

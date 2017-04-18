@@ -19,10 +19,11 @@
 package ai.grakn.factory;
 
 import ai.grakn.GraknGraph;
+import ai.grakn.GraknTxType;
 import ai.grakn.concept.EntityType;
 import ai.grakn.concept.Resource;
 import ai.grakn.concept.ResourceType;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 import ai.grakn.exception.GraknValidationException;
 import ai.grakn.util.GraknVersion;
 import org.apache.tinkerpop.gremlin.structure.Graph;
@@ -63,38 +64,37 @@ import java.util.stream.Collectors;
  * 
  * @author borislav, fppt
  *
- * @param <M>
  * @param <T>
  */
-public class SystemKeyspace<M extends GraknGraph, T extends Graph> {
+public class SystemKeyspace<T extends Graph> {
     // This will eventually be configurable and obtained the same way the factory is obtained
     // from engine. For now, we just make sure Engine and Core use the same system keyspace name.
     // If there is a more natural home for this constant, feel free to put it there! (Boris)
     public static final String SYSTEM_GRAPH_NAME = "graknSystem";
     public static final String SYSTEM_ONTOLOGY_FILE = "system.gql";
-    public static final TypeName KEYSPACE_ENTITY = TypeName.of("keyspace");
-    public static final TypeName KEYSPACE_RESOURCE = TypeName.of("keyspace-name");
-    public static final TypeName SYSTEM_VERSION = TypeName.of("system-version");
+    public static final TypeLabel KEYSPACE_ENTITY = TypeLabel.of("keyspace");
+    public static final TypeLabel KEYSPACE_RESOURCE = TypeLabel.of("keyspace-name");
+    public static final TypeLabel SYSTEM_VERSION = TypeLabel.of("system-version");
 
     protected final Logger LOG = LoggerFactory.getLogger(SystemKeyspace.class);
 
     private static final ConcurrentHashMap<String, Boolean> openSpaces = new ConcurrentHashMap<>();
-    private final InternalFactory<M, T> factory;
+    private final InternalFactory<T> factory;
 
-    public SystemKeyspace(InternalFactory<M, T> factory){
+    public SystemKeyspace(InternalFactory<T> factory){
         this.factory = factory;
     }
 
     /**
      * Notify that we just opened a keyspace with the same engineUrl & config.
      */
-    SystemKeyspace<M, T> keyspaceOpened(String keyspace) {
+    SystemKeyspace<T> keyspaceOpened(String keyspace) {
         openSpaces.computeIfAbsent(keyspace, name -> {
-            try (GraknGraph graph = factory.getGraph(false)) {
+            try (GraknGraph graph = factory.open(GraknTxType.WRITE)) {
                 ResourceType<String> keyspaceName = graph.getType(KEYSPACE_RESOURCE);
                 Resource<String> resource = keyspaceName.putResource(keyspace);
                 if (resource.owner() == null) {
-                    graph.<EntityType>getType(KEYSPACE_ENTITY).addEntity().hasResource(resource);
+                    graph.<EntityType>getType(KEYSPACE_ENTITY).addEntity().resource(resource);
                 }
                 graph.admin().commitNoLogs();
             } catch (GraknValidationException e) {
@@ -111,7 +111,7 @@ public class SystemKeyspace<M extends GraknGraph, T extends Graph> {
      * multiple times.
      */
     void loadSystemOntology() {
-        try (GraknGraph graph = factory.getGraph(false)) {
+        try (GraknGraph graph = factory.open(GraknTxType.WRITE)) {
             if (graph.getType(KEYSPACE_ENTITY) != null) {
                 return;
             }

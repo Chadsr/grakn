@@ -2,7 +2,8 @@ package ai.grakn.factory;
 
 import ai.grakn.Grakn;
 import ai.grakn.GraknGraph;
-import ai.grakn.GraknGraphFactory;
+import ai.grakn.GraknSession;
+import ai.grakn.GraknTxType;
 import ai.grakn.concept.EntityType;
 import ai.grakn.concept.ResourceType;
 import ai.grakn.exception.GraknValidationException;
@@ -21,34 +22,39 @@ public class SystemKeyspaceTest {
 	private final String space1 = "SystemKeyspaceTest.space1".toLowerCase();
 	private final String space2 = "SystemKeyspaceTest.space2";
 	private final String space3 = "SystemKeyspaceTest.space3";
-	
+
     @Test
-    public void testCollectKeyspaces() throws GraknValidationException {
-    	GraknGraphFactory f1 = Grakn.factory(Grakn.IN_MEMORY, space1);
-    	f1.getGraph().close();
-    	GraknGraphFactory f2 = Grakn.factory(Grakn.IN_MEMORY, space2);
-    	GraknGraph gf2 = f2.getGraph();
-    	GraknGraphFactory f3 = Grakn.factory(Grakn.IN_MEMORY, space3);
-    	GraknGraph gf3 = f3.getGraph();
-    	GraknGraphFactory system = Grakn.factory(Grakn.IN_MEMORY, SystemKeyspace.SYSTEM_GRAPH_NAME);
-    	GraknGraph graph = system.getGraph();
+    public void whenCreatingMultipleGraphs_EnsureKeySpacesAreAddedToSystemGraph() throws GraknValidationException {
+    	GraknSession f1 = Grakn.session(Grakn.IN_MEMORY, space1);
+    	f1.open(GraknTxType.WRITE).close();
+    	GraknSession f2 = Grakn.session(Grakn.IN_MEMORY, space2);
+    	GraknGraph gf2 = f2.open(GraknTxType.WRITE);
+    	GraknSession f3 = Grakn.session(Grakn.IN_MEMORY, space3);
+    	GraknGraph gf3 = f3.open(GraknTxType.WRITE);
+    	GraknSession system = Grakn.session(Grakn.IN_MEMORY, SystemKeyspace.SYSTEM_GRAPH_NAME);
+    	GraknGraph graph = system.open(GraknTxType.WRITE);
     	ResourceType<String> keyspaceName = graph.getResourceType("keyspace-name");
     	Collection<String> spaces = graph.getEntityType("keyspace").instances()
     		.stream().map(e -> 
     			e.resources(keyspaceName).iterator().next().getValue().toString()).collect(Collectors.toList());
-    	assertTrue(spaces.contains(space1));
-    	assertTrue(spaces.contains(space2.toLowerCase()));
-    	assertTrue(spaces.contains(space3.toLowerCase()));
+
+        assertTrue("Keyspace [" + space1 + "] is missing from system graph", spaces.contains(space1));
+        assertTrue("Keyspace [" + space2 + "] is missing from system graph", spaces.contains(space2.toLowerCase()));
+        assertTrue("Keyspace [" + space3 + "] is missing from system graph", spaces.contains(space3.toLowerCase()));
+
         assertEquals(GraknVersion.VERSION,
                 graph.getResourceType("system-version").instances().iterator().next().getValue().toString());
-    	gf2.close();
+
+        gf2.close();
     	gf3.close();
     	graph.close();
     }
 
+
+
     @Test
-    public void testUserOntology(){
-        GraknGraph graph = Grakn.factory(Grakn.IN_MEMORY, SystemKeyspace.SYSTEM_GRAPH_NAME).getGraph();
+    public void ensureUserOntologyIsLoadedIntoSystemGraph(){
+        GraknGraph graph = Grakn.session(Grakn.IN_MEMORY, SystemKeyspace.SYSTEM_GRAPH_NAME).open(GraknTxType.WRITE);
         graph.showImplicitConcepts(true);
 
         EntityType user = graph.getEntityType("user");
@@ -59,19 +65,21 @@ public class SystemKeyspaceTest {
         ResourceType userEmail = graph.getResourceType("user-email");
         ResourceType userIsAdmin = graph.getResourceType("user-is-admin");
 
-        //Check Plays Roles
-        assertTrue(user.playsRoles().contains(
-                graph.getRoleType(Schema.Resource.HAS_RESOURCE_OWNER.getName(userName.getName()).getValue())));
-        assertTrue(user.playsRoles().contains(
-                graph.getRoleType(Schema.Resource.HAS_RESOURCE_OWNER.getName(userPassword.getName()).getValue())));
-        assertTrue(user.playsRoles().contains(
-                graph.getRoleType(Schema.Resource.HAS_RESOURCE_OWNER.getName(userFirstName.getName()).getValue())));
-        assertTrue(user.playsRoles().contains(
-                graph.getRoleType(Schema.Resource.HAS_RESOURCE_OWNER.getName(userLastName.getName()).getValue())));
-        assertTrue(user.playsRoles().contains(
-                graph.getRoleType(Schema.Resource.HAS_RESOURCE_OWNER.getName(userEmail.getName()).getValue())));
-        assertTrue(user.playsRoles().contains(
-                graph.getRoleType(Schema.Resource.HAS_RESOURCE_OWNER.getName(userIsAdmin.getName()).getValue())));
+        //Check Plays
+        assertTrue(user.plays().contains(
+                graph.getRoleType(Schema.ImplicitType.KEY_OWNER.getLabel(userName.getLabel()).getValue())));
+        assertTrue(user.plays().contains(
+                graph.getRoleType(Schema.ImplicitType.HAS_OWNER.getLabel(userPassword.getLabel()).getValue())));
+        assertTrue(user.plays().contains(
+                graph.getRoleType(Schema.ImplicitType.HAS_OWNER.getLabel(userFirstName.getLabel()).getValue())));
+        assertTrue(user.plays().contains(
+                graph.getRoleType(Schema.ImplicitType.HAS_OWNER.getLabel(userLastName.getLabel()).getValue())));
+        assertTrue(user.plays().contains(
+                graph.getRoleType(Schema.ImplicitType.HAS_OWNER.getLabel(userEmail.getLabel()).getValue())));
+        assertTrue(user.plays().contains(
+                graph.getRoleType(Schema.ImplicitType.HAS_OWNER.getLabel(userIsAdmin.getLabel()).getValue())));
+
+        graph.close();
     }
 
 }

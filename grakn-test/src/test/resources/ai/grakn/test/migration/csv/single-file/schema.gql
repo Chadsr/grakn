@@ -1,21 +1,21 @@
 insert
 
 model sub entity
-    has-resource name
-    has-resource year
-    has-resource description
-    has-resource price
-    plays-role model-of-car;
+    has name
+    has year
+    has description
+    has price
+    plays model-of-car;
 make sub entity
-    has-resource name
-    plays-role make-of-car;
+    has name
+    plays make-of-car;
 
 name sub resource datatype string;
 year sub resource datatype string;
 description sub resource datatype string;
 price sub resource datatype double;
 
-make-and-model sub relation, has-role make-of-car, has-role model-of-car;
+make-and-model sub relation, relates make-of-car, relates model-of-car;
 make-of-car sub role;
 model-of-car sub role;
 

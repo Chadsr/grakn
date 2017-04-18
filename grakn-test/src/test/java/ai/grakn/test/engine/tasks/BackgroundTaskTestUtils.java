@@ -31,14 +31,17 @@ import com.google.common.collect.ImmutableMultiset;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.Sets;
+import java.time.Duration;
+import java.time.Instant;
 import mjson.Json;
 
 import java.util.Collection;
-import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static ai.grakn.engine.TaskStatus.COMPLETED;
 import static ai.grakn.engine.TaskStatus.FAILED;
@@ -48,20 +51,13 @@ import static java.util.stream.Collectors.counting;
 import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.toSet;
 import static java.util.stream.Stream.generate;
-import static org.junit.Assert.fail;
 
 /**
  * Class holding useful methods for use throughout background task tests
  */
 public class BackgroundTaskTestUtils {
 
-    public static Set<TaskState> createTasks(int n) {
-        return generate(() -> createTask(ShortExecutionMockTask.class)).limit(n).collect(toSet());
-    }
-
-    public static Set<TaskState> createScheduledTasks(int n) {
-        return generate(() -> createTask(ShortExecutionMockTask.class).markScheduled()).limit(n).collect(toSet());
-    }
+    private final static Logger LOG = LoggerFactory.getLogger(BackgroundTaskTestUtils.class);
 
     public static Set<TaskState> createRunningTasks(int n, EngineID engineID) {
         return generate(() -> createTask(ShortExecutionMockTask.class).markRunning(engineID)).limit(n).collect(toSet());
@@ -99,9 +95,16 @@ public class BackgroundTaskTestUtils {
     }
 
     public static void waitForStatus(TaskStateStorage storage, TaskId task, Set<TaskStatus> status) {
-        final long initial = new Date().getTime();
+        Instant initial = Instant.now();
 
-        while((new Date().getTime())-initial < 60000) {
+        while(true) {
+            long duration = Duration.between(initial, Instant.now()).toMillis();
+            if (duration > 120000){
+                TaskStatus finalStatus = storage.containsTask(task) ? storage.getState(task).status() : null;
+                LOG.warn("Waiting for status of " + task + " to be any of " + status + ", but status is " + finalStatus);
+                initial = Instant.now();
+            }
+
             if (storage.containsTask(task)) {
                 TaskStatus currentStatus = storage.getState(task).status();
                 if (status.contains(currentStatus)) {
@@ -115,10 +118,6 @@ public class BackgroundTaskTestUtils {
                 e.printStackTrace();
             }
         }
-
-        TaskStatus finalStatus = storage.containsTask(task) ? storage.getState(task).status() : null;
-
-        fail("Timeout waiting for status of " + task + " to be any of " + status + ", but status is " + finalStatus);
     }
 
     public static Multiset<TaskId> completableTasks(List<TaskState> tasks) {

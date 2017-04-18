@@ -22,11 +22,14 @@ import ai.grakn.concept.Concept;
 import ai.grakn.graql.MatchQuery;
 import ai.grakn.graql.QueryBuilder;
 import ai.grakn.graql.VarName;
+import ai.grakn.graql.admin.Answer;
 import ai.grakn.graql.admin.MatchQueryAdmin;
+import ai.grakn.graql.internal.reasoner.query.QueryAnswer;
 import ai.grakn.graql.internal.reasoner.query.QueryAnswers;
 import ai.grakn.graphs.GenealogyGraph;
 import ai.grakn.test.GraphContext;
 import com.google.common.collect.Sets;
+import java.util.stream.Collectors;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
 import org.junit.Ignore;
@@ -38,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static java.util.stream.Collectors.toSet;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -106,16 +110,18 @@ public class GenealogyTest {
 
     @Test
     public void testFemale() {
-        String queryString = "match $x isa person has identifier $id has gender 'female';";
-        QueryAnswers answers = queryAnswers(iqb.parse(queryString));
+        String queryString = "match $x isa person has gender 'female';";
+        MatchQuery query = iqb.parse(queryString);
+        QueryAnswers answers = queryAnswers(query);
         assertEquals(answers.size(), 32);
         assertEquals(answers, queryAnswers(qb.<MatchQueryAdmin>parse(queryString)));
     }
 
     @Test
     public void testGender() {
-        String queryString = "match $x isa person has identifier $id has gender $gender;";
-        QueryAnswers answers = queryAnswers(iqb.parse(queryString));
+        String queryString = "match $x isa person has gender $gender;";
+        MatchQuery query = iqb.parse(queryString);
+        QueryAnswers answers = queryAnswers(query);
         assertEquals(answers, queryAnswers(qb.<MatchQueryAdmin>parse(queryString)));
         assertEquals(answers.size(), qb.<MatchQueryAdmin>parse("match $x isa person;").execute().size());
     }
@@ -283,7 +289,7 @@ public class GenealogyTest {
     @Ignore
     @Test
     public void testWife2(){
-        String queryString = "match ($r: $x) isa marriage;$r type-name 'wife';select $x;";
+        String queryString = "match ($r: $x) isa marriage;$r label 'wife';select $x;";
         String queryString2 = "match (wife: $x) isa marriage;";
         MatchQuery query = iqb.parse(queryString);
         MatchQuery query2 = iqb.parse(queryString2);
@@ -303,8 +309,9 @@ public class GenealogyTest {
     @Test
     public void testSiblings() {
         String queryString = "match (sibling1:$x, sibling2:$y) isa siblings;";
-        MatchQuery query = iqb.parse(queryString);
-        QueryAnswers answers = queryAnswers(query);
+        MatchQuery query = iqb.materialise(true).parse(queryString);
+
+        QueryAnswers answers = new QueryAnswers(query.admin().streamWithAnswers().collect(Collectors.toSet()));
         assertEquals(answers.size(), 166);
         assertTrue(!hasDuplicates(answers));
         assertEquals(answers, queryAnswers(qb.<MatchQueryAdmin>parse(queryString)));
@@ -314,6 +321,7 @@ public class GenealogyTest {
     public void testCousins() {
         String queryString = "match ($x, $y) isa cousins;";
         MatchQuery query = iqb.parse(queryString);
+
         QueryAnswers answers = queryAnswers(query);
         assertEquals(answers.size(), 192);
         assertTrue(!hasDuplicates(answers));
@@ -324,6 +332,7 @@ public class GenealogyTest {
     public void testInLaws() {
         String queryString = "match $x(parent-in-law: $x1, child-in-law: $x2) isa in-laws;";
         MatchQuery query = iqb.parse(queryString);
+
         QueryAnswers answers = queryAnswers(query);
         QueryAnswers requeriedAnswers = queryAnswers(query);
         assertEquals(answers.size(), 50);
@@ -355,7 +364,7 @@ public class GenealogyTest {
     @Test
     public void testMotherInLaw() {
         String queryString = "match (mother-in-law: $x);$x has gender $g;";
-        String queryString2 = "match (parent-in-law: $x, child-in-law: $y) isa in-laws;$x has gender $g;$g value 'female'; select $x, $g;";
+        String queryString2 = "match (parent-in-law: $x, child-in-law: $y) isa in-laws;$x has gender $g;$g val 'female'; select $x, $g;";
         MatchQuery query = iqb.parse(queryString);
         MatchQuery query2 = iqb.parse(queryString2);
         QueryAnswers answers = queryAnswers(query);
@@ -369,7 +378,7 @@ public class GenealogyTest {
     @Test
     public void testFatherInLaw() {
         String queryString = "match (father-in-law: $x);$x has gender $g;";
-        String queryString2 = "match (parent-in-law: $x, child-in-law: $y) isa in-laws;$x has gender $g;$g value'male'; select $x, $g;";
+        String queryString2 = "match (parent-in-law: $x, child-in-law: $y) isa in-laws;$x has gender $g;$g val'male'; select $x, $g;";
         MatchQuery query = iqb.parse(queryString);
         MatchQuery query2 = iqb.parse(queryString2);
         QueryAnswers answers = queryAnswers(query);
@@ -463,10 +472,10 @@ public class GenealogyTest {
 
     @Test
     public void testFemaleFather() {
-        String queryString = "match (father: $x) isa parentship; $x has gender $g; $g value 'female';";
+        String queryString = "match (father: $x) isa parentship; $x has gender $g; $g val 'female';";
         MatchQuery query = iqb.parse(queryString);
         QueryAnswers answers = queryAnswers(query);
-        QueryAnswers answers2 =  queryAnswers(genealogyGraph.graph().graql().infer(true).materialise(false).parse(queryString));
+        QueryAnswers answers2 =  queryAnswers(genealogyGraph.graph().graql().infer(true).materialise(true).parse(queryString));
         assertTrue(answers.isEmpty());
         assertEquals(answers, answers2);
     }
@@ -504,7 +513,7 @@ public class GenealogyTest {
 
     private boolean checkResource(QueryAnswers answers, String var, String value){
         boolean isOk = true;
-        Iterator<Map<VarName, Concept>> it =  answers.iterator();
+        Iterator<Answer> it =  answers.iterator();
         while (it.hasNext() && isOk){
             Concept c = it.next().get(VarName.of(var));
             isOk = c.asResource().getValue().equals(value);
@@ -514,9 +523,9 @@ public class GenealogyTest {
 
     private boolean hasDuplicates(QueryAnswers answers){
         boolean hasDuplicates = false;
-        Iterator<Map<VarName, Concept>> it = answers.iterator();
+        Iterator<Answer> it = answers.iterator();
         while(it.hasNext() && !hasDuplicates){
-            Map<VarName, Concept> answer = it.next();
+            Answer answer = it.next();
             Set<Concept> existing = new HashSet<>();
             hasDuplicates = answer.entrySet()
                     .stream()
@@ -528,6 +537,6 @@ public class GenealogyTest {
     }
 
     private QueryAnswers queryAnswers(MatchQuery query) {
-        return new QueryAnswers(query.admin().results());
+        return new QueryAnswers(query.admin().streamWithVarNames().map(QueryAnswer::new).collect(toSet()));
     }
 }

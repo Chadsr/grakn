@@ -18,8 +18,9 @@
 
 package ai.grakn.graql.internal.gremlin;
 
+import ai.grakn.GraknGraph;
 import ai.grakn.concept.ConceptId;
-import ai.grakn.concept.TypeName;
+import ai.grakn.concept.TypeLabel;
 import ai.grakn.graql.Pattern;
 import ai.grakn.graql.Var;
 import ai.grakn.graql.VarName;
@@ -30,6 +31,7 @@ import ai.grakn.graql.internal.pattern.Patterns;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.util.Collection;
@@ -46,12 +48,12 @@ import static ai.grakn.graql.Graql.var;
 import static ai.grakn.graql.internal.gremlin.fragment.Fragments.distinctCasting;
 import static ai.grakn.graql.internal.gremlin.fragment.Fragments.id;
 import static ai.grakn.graql.internal.gremlin.fragment.Fragments.inCasting;
-import static ai.grakn.graql.internal.gremlin.fragment.Fragments.inHasRole;
+import static ai.grakn.graql.internal.gremlin.fragment.Fragments.inRelates;
 import static ai.grakn.graql.internal.gremlin.fragment.Fragments.inIsa;
 import static ai.grakn.graql.internal.gremlin.fragment.Fragments.inRolePlayer;
-import static ai.grakn.graql.internal.gremlin.fragment.Fragments.name;
+import static ai.grakn.graql.internal.gremlin.fragment.Fragments.label;
 import static ai.grakn.graql.internal.gremlin.fragment.Fragments.outCasting;
-import static ai.grakn.graql.internal.gremlin.fragment.Fragments.outHasRole;
+import static ai.grakn.graql.internal.gremlin.fragment.Fragments.outRelates;
 import static ai.grakn.graql.internal.gremlin.fragment.Fragments.outIsa;
 import static ai.grakn.graql.internal.gremlin.fragment.Fragments.outRolePlayer;
 import static ai.grakn.graql.internal.gremlin.fragment.Fragments.shortcut;
@@ -64,6 +66,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.mock;
 
 public class GraqlTraversalTest {
 
@@ -82,6 +85,12 @@ public class GraqlTraversalTest {
     private static final Fragment yShortcutX = shortcut(Optional.empty(), Optional.empty(), Optional.empty(), y, x);
 
     private static final GraqlTraversal fastIsaTraversal = traversal(yId, yTypeOfX);
+    private static GraknGraph graph;
+
+    @BeforeClass
+    public static void setUp() {
+        graph = mock(GraknGraph.class);
+    }
 
     @Test
     public void testComplexityIndexVsIsa() {
@@ -110,10 +119,10 @@ public class GraqlTraversalTest {
     }
 
     @Test
-    public void testHasRoleFasterFromRoleType() {
-        GraqlTraversal hasRoleFromRelationType = traversal(yId, outHasRole(y, x), xId);
-        GraqlTraversal hasRoleFromRoleType = traversal(xId, inHasRole(x, y), yId);
-        assertFaster(hasRoleFromRoleType, hasRoleFromRelationType);
+    public void testRelatesFasterFromRoleType() {
+        GraqlTraversal relatesFromRelationType = traversal(yId, outRelates(y, x), xId);
+        GraqlTraversal relatesFromRoleType = traversal(xId, inRelates(x, y), yId);
+        assertFaster(relatesFromRoleType, relatesFromRelationType);
     }
 
     @Test
@@ -180,7 +189,7 @@ public class GraqlTraversalTest {
 
     @Test
     public void testAllTraversalsDisjunction() {
-        Pattern pattern = or(Patterns.var(x).id(ConceptId.of("Titanic")).value("hello"), Patterns.var().rel("x").rel("y"));
+        Pattern pattern = or(Patterns.var(x).id(ConceptId.of("Titanic")).val("hello"), Patterns.var().rel("x").rel("y"));
         Set<GraqlTraversal> traversals = allGraqlTraversals(pattern).collect(toSet());
 
         // Expect all combinations of both disjunctions
@@ -206,14 +215,14 @@ public class GraqlTraversalTest {
 
     @Test
     public void testOptimalByValue() {
-        assertNearlyOptimal(var(x).value("hello").isa(var(y).id(ConceptId.of("movie"))));
+        assertNearlyOptimal(var(x).val("hello").isa(var(y).id(ConceptId.of("movie"))));
     }
 
     @Test
     public void testOptimalAttachedResource() {
         assertNearlyOptimal(var()
                 .rel(var(x).isa(var(y).id(ConceptId.of("movie"))))
-                .rel(var(z).value("Titanic").isa(var("a").id(ConceptId.of("title")))));
+                .rel(var(z).val("Titanic").isa(var("a").id(ConceptId.of("title")))));
     }
 
     @Test
@@ -221,7 +230,7 @@ public class GraqlTraversalTest {
         assertNearlyOptimal(and(
                 var(x).id(ConceptId.of("xid")),
                 var().rel(var(x)).rel(var(y)),
-                var(y).isa(var(b).name("person")),
+                var(y).isa(var(b).label("person")),
                 var().rel(var(y)).rel(var(z))
         ));
     }
@@ -242,15 +251,15 @@ public class GraqlTraversalTest {
     public void testShortcutOptimisationWithType() {
         VarName marriageName = VarName.of("m");
 
-        Var marriage = var(marriageName).name("marriage");
+        Var marriage = var(marriageName).label("marriage");
 
         Var rel = var().rel("x").rel("y").isa(marriage);
 
         GraqlTraversal graqlTraversal = semiOptimal(rel);
 
-        Fragment xMarriesY = shortcut(Optional.of(TypeName.of("marriage")), Optional.empty(), Optional.empty(), x, y);
-        Fragment yMarriesX = shortcut(Optional.of(TypeName.of("marriage")), Optional.empty(), Optional.empty(), y, x);
-        Fragment marriageFragment = name(marriageName, TypeName.of("marriage"));
+        Fragment xMarriesY = shortcut(Optional.of(TypeLabel.of("marriage")), Optional.empty(), Optional.empty(), x, y);
+        Fragment yMarriesX = shortcut(Optional.of(TypeLabel.of("marriage")), Optional.empty(), Optional.empty(), y, x);
+        Fragment marriageFragment = label(marriageName, TypeLabel.of("marriage"));
 
         assertThat(graqlTraversal, anyOf(
                 is(traversal(xMarriesY, marriageFragment)),
@@ -264,15 +273,15 @@ public class GraqlTraversalTest {
     public void testShortcutOptimisationWithRoles() {
         VarName wifeName = VarName.of("w");
 
-        Var wife = var(wifeName).name("wife");
+        Var wife = var(wifeName).label("wife");
 
         Var rel = var().rel("x").rel(wife, "y");
 
         GraqlTraversal graqlTraversal = semiOptimal(rel);
 
-        Fragment xMarriesY = shortcut(Optional.empty(), Optional.empty(), Optional.of(TypeName.of("wife")), x, y);
-        Fragment yMarriesX = shortcut(Optional.empty(), Optional.of(TypeName.of("wife")), Optional.empty(), y, x);
-        Fragment wifeFragment = name(wifeName, TypeName.of("wife"));
+        Fragment xMarriesY = shortcut(Optional.empty(), Optional.empty(), Optional.of(TypeLabel.of("wife")), x, y);
+        Fragment yMarriesX = shortcut(Optional.empty(), Optional.of(TypeLabel.of("wife")), Optional.empty(), y, x);
+        Fragment wifeFragment = label(wifeName, TypeLabel.of("wife"));
 
         assertThat(graqlTraversal, anyOf(
                 is(traversal(xMarriesY, wifeFragment)),
@@ -283,7 +292,7 @@ public class GraqlTraversalTest {
     }
 
     private static GraqlTraversal semiOptimal(Pattern pattern) {
-        return GreedyTraversalPlan.createTraversal(pattern.admin());
+        return GreedyTraversalPlan.createTraversal(pattern.admin(), graph);
     }
 
     private static GraqlTraversal traversal(Fragment... fragments) {
@@ -300,7 +309,7 @@ public class GraqlTraversalTest {
         Collection<Conjunction<VarAdmin>> patterns = pattern.admin().getDisjunctiveNormalForm().getPatterns();
 
         List<Set<List<Fragment>>> collect = patterns.stream()
-                .map(ConjunctionQuery::new)
+                .map(conjunction -> new ConjunctionQuery(conjunction, graph))
                 .map(ConjunctionQuery::allFragmentOrders)
                 .collect(toList());
 

@@ -31,9 +31,9 @@ import org.junit.ClassRule;
 import org.junit.Test;
 
 import static ai.grakn.graql.Graql.and;
+import static ai.grakn.graql.Graql.label;
 import static ai.grakn.graql.Graql.lte;
 import static ai.grakn.graql.Graql.match;
-import static ai.grakn.graql.Graql.name;
 import static ai.grakn.graql.Graql.neq;
 import static ai.grakn.graql.Graql.or;
 import static ai.grakn.graql.Graql.var;
@@ -53,7 +53,7 @@ public class QueryToStringTest {
 
     @Test
     public void testSimpleMatchQueryToString() {
-        assertSameResults(qb.match(var("x").isa("movie").name("Godfather")));
+        assertSameResults(qb.match(var("x").isa("movie").label("Godfather")));
     }
 
     @Test
@@ -63,7 +63,7 @@ public class QueryToStringTest {
                 var().rel("x").rel("y"),
                 or(
                         var("y").isa("person"),
-                        var("y").isa("genre").value(neq("crime"))
+                        var("y").isa("genre").val(neq("crime"))
                 ),
                 var("y").has("name", var("n"))
         ).orderBy("n").select("x", "y").limit(8).offset(4);
@@ -81,13 +81,13 @@ public class QueryToStringTest {
     }
 
     @Test
-    public void testQueryWithPlaysRoleToString() {
-        assertSameResults(qb.match(var("x").playsRole(var("y"))));
+    public void testQueryWithPlaysToString() {
+        assertSameResults(qb.match(var("x").plays(var("y"))));
     }
 
     @Test
-    public void testQueryWithHasRoleToString() {
-        assertSameResults(qb.match(var("x").hasRole(var("y"))));
+    public void testQueryWithRelatesToString() {
+        assertSameResults(qb.match(var("x").relates(var("y"))));
     }
 
     @Test
@@ -128,14 +128,14 @@ public class QueryToStringTest {
 
     @Test
     public void testEscapeStrings() {
-        assertEquals("insert $x value \"hello\\nworld\";", qb.insert(var("x").value("hello\nworld")).toString());
+        assertEquals("insert $x val \"hello\\nworld\";", qb.insert(var("x").val("hello\nworld")).toString());
     }
 
     @Test
     public void testQuoteIds() {
         assertEquals(
                 "match $a (\"hello\\tworld\");",
-                match(var("a").rel(name("hello\tworld"))).toString()
+                match(var("a").rel(label("hello\tworld"))).toString()
         );
     }
 
@@ -143,13 +143,13 @@ public class QueryToStringTest {
     public void testQuoteIdsNumbers() {
         assertEquals(
                 "match $a (\"1hi\");",
-                match(var("a").rel(name("1hi"))).toString()
+                match(var("a").rel(label("1hi"))).toString()
         );
     }
 
     @Test
-    public void testHasResource() {
-        assertEquals("insert $x has-resource thingy;", qb.insert(var("x").hasResource("thingy")).toString());
+    public void testHas() {
+        assertEquals("insert $x has thingy;", qb.insert(var("x").has("thingy")).toString());
     }
 
     @Test
@@ -199,29 +199,24 @@ public class QueryToStringTest {
     }
 
     @Test
-    public void testResourceWithoutTypeToString() {
-        assertSameResults(qb.match(var("x").has(var("y"))));
-    }
-
-    @Test
     public void testZeroToString() {
-        assertEquals("match $x value 0.0;", qb.match(var("x").value(0.0)).toString());
+        assertEquals("match $x val 0.0;", qb.match(var("x").val(0.0)).toString());
     }
 
     @Test
     public void testExponentsToString() {
-        assertEquals("match $x value 1000000000.0;", qb.match(var("x").value(1_000_000_000.0)).toString());
+        assertEquals("match $x val 1000000000.0;", qb.match(var("x").val(1_000_000_000.0)).toString());
     }
 
     @Test
     public void testDecimalToString() {
-        assertEquals("match $x value 0.0001;", qb.match(var("x").value(0.0001)).toString());
+        assertEquals("match $x val 0.0001;", qb.match(var("x").val(0.0001)).toString());
     }
 
     @Test(expected=UnsupportedOperationException.class)
     public void testToStringUnsupported() {
         //noinspection ResultOfMethodCallIgnored
-        qb.match(var("x").isa(var().value("abc"))).toString();
+        qb.match(var("x").isa(var().val("abc"))).toString();
     }
 
     private void assertSameResults(MatchQuery query) {

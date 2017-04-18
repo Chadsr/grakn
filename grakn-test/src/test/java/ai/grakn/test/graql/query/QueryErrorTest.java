@@ -36,8 +36,9 @@ import org.junit.rules.ExpectedException;
 
 import java.util.stream.Stream;
 
-import static ai.grakn.graql.Graql.name;
+import static ai.grakn.graql.Graql.label;
 import static ai.grakn.graql.Graql.var;
+import static ai.grakn.util.ErrorMessage.NO_PATTERNS;
 import static org.hamcrest.core.AllOf.allOf;
 import static org.hamcrest.core.StringContains.containsString;
 
@@ -121,23 +122,23 @@ public class QueryErrorTest {
     @Test
     public void testExceptionWhenNoPatternsProvided() {
         exception.expect(IllegalArgumentException.class);
-        exception.expectMessage(allOf(containsString("match"), containsString("pattern")));
+        exception.expectMessage(NO_PATTERNS.getMessage());
         qb.match();
     }
 
     @Test
     public void testExceptionWhenNullValue() {
         exception.expect(NullPointerException.class);
-        var("x").value(null);
+        var("x").val(null);
     }
 
     @Test
     public void testExceptionWhenNoHasResourceRelation() throws GraknValidationException {
-        // Create a fresh graph, with no has-resource between person and name
+        // Create a fresh graph, with no has between person and name
         QueryBuilder emptyQb = empty.graph().graql();
         emptyQb.insert(
-                name("person").sub("entity"),
-                name("name").sub("resource").datatype(ResourceType.DataType.STRING)
+                label("person").sub("entity"),
+                label("name").sub("resource").datatype(ResourceType.DataType.STRING)
         ).execute();
 
         exception.expect(ConceptException.class);
@@ -161,11 +162,11 @@ public class QueryErrorTest {
     @Test
     public void testAdditionalSemicolon() {
         exception.expect(IllegalStateException.class);
-        exception.expectMessage(allOf(containsString("id"), containsString("plays-role product-type")));
+        exception.expectMessage(allOf(containsString("id"), containsString("plays product-type")));
         qb.parse(
                 "insert " +
                         "tag-group sub role; product-type sub role;" +
-                        "category sub entity, plays-role tag-group; plays-role product-type;"
+                        "category sub entity, plays tag-group; plays product-type;"
         ).execute();
     }
 

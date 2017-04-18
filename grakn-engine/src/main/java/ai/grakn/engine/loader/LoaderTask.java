@@ -19,9 +19,11 @@
 package ai.grakn.engine.loader;
 
 import ai.grakn.GraknGraph;
-import ai.grakn.engine.tasks.BackgroundTask;
-import ai.grakn.engine.postprocessing.EngineCache;
+import ai.grakn.GraknTxType;
 import ai.grakn.engine.GraknEngineConfig;
+import ai.grakn.engine.cache.EngineCacheProvider;
+import ai.grakn.engine.tasks.BackgroundTask;
+import ai.grakn.engine.tasks.TaskCheckpoint;
 import ai.grakn.exception.GraknValidationException;
 import ai.grakn.factory.EngineGraknGraphFactory;
 import ai.grakn.graql.Graql;
@@ -40,7 +42,7 @@ import java.util.function.Consumer;
 import static ai.grakn.engine.GraknEngineConfig.LOADER_REPEAT_COMMITS;
 import static ai.grakn.util.ErrorMessage.FAILED_VALIDATION;
 import static ai.grakn.util.ErrorMessage.ILLEGAL_ARGUMENT_EXCEPTION;
-import static ai.grakn.util.REST.Request.KEYSPACE_PARAM;
+import static ai.grakn.util.REST.Request.KEYSPACE;
 import static ai.grakn.util.REST.Request.TASK_LOADER_INSERTS;
 import static java.util.stream.Collectors.toList;
 
@@ -59,7 +61,7 @@ public class LoaderTask implements BackgroundTask {
     private final QueryBuilder builder = Graql.withoutGraph().infer(false);
 
     @Override
-    public boolean start(Consumer<String> saveCheckpoint, Json configuration) {
+    public boolean start(Consumer<TaskCheckpoint> saveCheckpoint, Json configuration) {
         attemptInsertions(
                 getKeyspace(configuration),
                 getInserts(configuration));
@@ -77,12 +79,12 @@ public class LoaderTask implements BackgroundTask {
     }
 
     @Override
-    public void resume(Consumer<String> saveCheckpoint, String lastCheckpoint) {
+    public boolean resume(Consumer<TaskCheckpoint> saveCheckpoint, TaskCheckpoint lastCheckpoint) {
         throw new UnsupportedOperationException("Loader task cannot be resumed");
     }
 
     private void attemptInsertions(String keyspace, Collection<InsertQuery> inserts) {
-        try(GraknGraph graph = EngineGraknGraphFactory.getInstance().getGraphBatchLoading(keyspace)) {
+        try(GraknGraph graph = EngineGraknGraphFactory.getInstance().getGraph(keyspace, GraknTxType.BATCH)) {
             for (int i = 0; i < repeatCommits; i++) {
                 if(insertQueriesInOneTransaction(graph, inserts)){
                     return;
@@ -107,7 +109,8 @@ public class LoaderTask implements BackgroundTask {
             inserts.forEach(q -> q.withGraph(graph).execute());
 
             // commit the transaction
-            graph.admin().commit(EngineCache.getInstance());
+            //TODO This commit uses the rest API, it shouldn't
+            graph.commit();
         } catch (GraknValidationException e) {
             //If it's a validation exception there is no point in re-trying
             throwException(FAILED_VALIDATION.getMessage(e.getMessage()), inserts);
@@ -176,8 +179,8 @@ public class LoaderTask implements BackgroundTask {
      * @return keyspace from the configuration
      */
     private String getKeyspace(Json configuration){
-        if(configuration.has(KEYSPACE_PARAM)){
-            return configuration.at(KEYSPACE_PARAM).asString();
+        if(configuration.has(KEYSPACE)){
+            return configuration.at(KEYSPACE).asString();
         }
 
         //TODO default graph name

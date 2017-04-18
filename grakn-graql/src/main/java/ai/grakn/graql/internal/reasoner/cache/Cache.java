@@ -20,15 +20,19 @@ package ai.grakn.graql.internal.reasoner.cache;
 
 import ai.grakn.concept.Concept;
 import ai.grakn.graql.VarName;
+import ai.grakn.graql.admin.Answer;
 import ai.grakn.graql.admin.ReasonerQuery;
+import ai.grakn.graql.admin.Unifier;
 import ai.grakn.graql.internal.reasoner.iterator.LazyIterator;
+import ai.grakn.graql.internal.reasoner.query.UnifierImpl;
+import javafx.util.Pair;
+
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javafx.util.Pair;
 
 /**
  *
@@ -36,14 +40,19 @@ import javafx.util.Pair;
  * Generic container class for storing performed query resolutions.
  * </p>
  *
+ * @param <Q> the type of query that is being cached
+ * @param <T> the type of answer being cached
+ *
  * @author Kasper Piskorski
  *
  */
-public abstract class Cache<Q extends ReasonerQuery, T extends Iterable<Map<VarName, Concept>>>{
+public abstract class Cache<Q extends ReasonerQuery, T extends Iterable<Answer>>{
 
+    protected final boolean explanation;
     protected final Map<Q, Pair<Q, T>> cache = new HashMap<>();
 
-    public Cache(){ super();}
+    public Cache(){ this.explanation = false;}
+    public Cache(boolean explanation){ this.explanation = explanation;}
     public boolean contains(Q query){ return cache.containsKey(query);}
     public Set<Q> getQueries(){ return cache.keySet();}
 
@@ -61,7 +70,7 @@ public abstract class Cache<Q extends ReasonerQuery, T extends Iterable<Map<VarN
      * @param answers answer stream of the query
      * @return updated answer stream
      */
-    public abstract Stream<Map<VarName, Concept>> record(Q query, Stream<Map<VarName, Concept>> answers);
+    public abstract Stream<Answer> record(Q query, Stream<Answer> answers);
 
     /**
      * record answer stream for a specific query and retrieve the updated stream in a lazy iterator
@@ -69,11 +78,11 @@ public abstract class Cache<Q extends ReasonerQuery, T extends Iterable<Map<VarN
      * @param answers answer stream of the query
      * @return lazy iterator of updated answers
      */
-    public abstract LazyIterator<Map<VarName, Concept>> recordRetrieveLazy(Q query, Stream<Map<VarName, Concept>> answers);
+    public abstract LazyIterator<Answer> recordRetrieveLazy(Q query, Stream<Answer> answers);
 
     public abstract T getAnswers(Q query);
-    public abstract Stream<Map<VarName, Concept>> getAnswerStream(Q query);
-    public abstract LazyIterator<Map<VarName, Concept>> getAnswerIterator(Q query);
+    public abstract Stream<Answer> getAnswerStream(Q query);
+    public abstract LazyIterator<Answer> getAnswerIterator(Q query);
 
     /**
      * return an inverse answer map which is more suitable for operations involving concept comparison (joins, filtering, etc.)
@@ -82,22 +91,22 @@ public abstract class Cache<Q extends ReasonerQuery, T extends Iterable<Map<VarN
      * @param vars variable names of interest
      * @return inverse answer map for specified query
      */
-    public Map<Pair<VarName, Concept>, Set<Map<VarName, Concept>>> getInverseAnswerMap(Q query, Set<VarName> vars){
-        Map<Pair<VarName, Concept>, Set<Map<VarName, Concept>>> inverseAnswerMap = new HashMap<>();
-        Set<Map<VarName, Concept>> answers = getAnswerStream(query).collect(Collectors.toSet());
+    public Map<Pair<VarName, Concept>, Set<Answer>> getInverseAnswerMap(Q query, Set<VarName> vars){
+        Map<Pair<VarName, Concept>, Set<Answer>> inverseAnswerMap = new HashMap<>();
+        Set<Answer> answers = getAnswerStream(query).collect(Collectors.toSet());
         answers.forEach(answer -> answer.entrySet().stream()
-                    .filter(e -> vars.contains(e.getKey()))
-                    .forEach(entry -> {
-                        Pair<VarName, Concept> key = new Pair<>(entry.getKey(), entry.getValue());
-                        Set<Map<VarName, Concept>> match = inverseAnswerMap.get(key);
-                        if (match != null){
-                            match.add(answer);
-                        } else {
-                            Set<Map<VarName, Concept>> ans = new HashSet<>();
-                            ans.add(answer);
-                            inverseAnswerMap.put(key, ans);
-                        }
-                    }));
+                .filter(e -> vars.contains(e.getKey()))
+                .forEach(entry -> {
+                    Pair<VarName, Concept> key = new Pair<>(entry.getKey(), entry.getValue());
+                    Set<Answer> match = inverseAnswerMap.get(key);
+                    if (match != null){
+                        match.add(answer);
+                    } else {
+                        Set<Answer> ans = new HashSet<>();
+                        ans.add(answer);
+                        inverseAnswerMap.put(key, ans);
+                    }
+                }));
         return inverseAnswerMap;
     }
 
@@ -106,20 +115,20 @@ public abstract class Cache<Q extends ReasonerQuery, T extends Iterable<Map<VarN
      * @param query for answer are to be retrieved
      * @return inverse answer map for specified query
      */
-    public Map<Pair<VarName, Concept>, Set<Map<VarName, Concept>>> getInverseAnswerMap(Q query){
+    public Map<Pair<VarName, Concept>, Set<Answer>> getInverseAnswerMap(Q query){
         return getInverseAnswerMap(query, query.getVarNames());
     }
 
-    Map<VarName, VarName> getRecordUnifiers(Q toRecord){
+    Unifier getRecordUnifier(Q toRecord){
         Q equivalentQuery = contains(toRecord)? cache.get(toRecord).getKey() : null;
-        if (equivalentQuery != null) return toRecord.getUnifiers(equivalentQuery);
-        else return new HashMap<>();
+        if (equivalentQuery != null) return toRecord.getUnifier(equivalentQuery);
+        else return new UnifierImpl();
     }
 
-    Map<VarName, VarName> getRetrieveUnifiers(Q toRetrieve){
+    Unifier getRetrieveUnifier(Q toRetrieve){
         Q equivalentQuery = contains(toRetrieve)? cache.get( toRetrieve).getKey() : null;
-        if (equivalentQuery != null) return  equivalentQuery.getUnifiers(toRetrieve);
-        else return new HashMap<>();
+        if (equivalentQuery != null) return  equivalentQuery.getUnifier(toRetrieve);
+        else return new UnifierImpl();
     }
 
     /**

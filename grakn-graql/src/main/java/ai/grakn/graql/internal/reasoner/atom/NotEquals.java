@@ -18,14 +18,14 @@
 
 package ai.grakn.graql.internal.reasoner.atom;
 
-import ai.grakn.concept.Concept;
 import ai.grakn.graql.VarName;
+import ai.grakn.graql.admin.Answer;
 import ai.grakn.graql.admin.Atomic;
 import ai.grakn.graql.admin.ReasonerQuery;
+import ai.grakn.graql.admin.Unifier;
 import ai.grakn.graql.internal.pattern.property.NeqProperty;
 import ai.grakn.graql.internal.reasoner.query.QueryAnswers;
 
-import java.util.Map;
 import java.util.stream.Stream;
 
 import static ai.grakn.graql.Graql.var;
@@ -84,21 +84,22 @@ public class NotEquals extends AtomBase {
     }
 
     @Override
-    public void unify(Map<VarName, VarName> unifiers){
-        super.unify(unifiers);
+    public void unify(Unifier unifier){
+        super.unify(unifier);
         VarName var = getReferenceVarName();
-        if (unifiers.containsKey(var)) {
-            setRefVarName(unifiers.get(var));
-        } else if (unifiers.containsValue(var)) {
+        if (unifier.containsKey(var)) {
+            setRefVarName(unifier.get(var));
+        } else if (unifier.containsValue(var)) {
             setRefVarName(capture(var));
         }
     }
 
     public VarName getReferenceVarName(){ return refVarName;}
 
-    public static boolean notEqualsOperator(Map<VarName, Concept> answer, NotEquals atom) {
+    public static boolean notEqualsOperator(Answer answer, NotEquals atom) {
         return !answer.get(atom.varName).equals(answer.get(atom.refVarName));
     }
+
 
     /**
      * apply the not equals filter to answer set
@@ -118,7 +119,7 @@ public class NotEquals extends AtomBase {
      * @param answers the filter should be applied to
      * @return filtered answer stream
      */
-    public Stream<Map<VarName, Concept>> filter(Stream<Map<VarName, Concept>> answers){
+    public Stream<Answer> filter(Stream<Answer> answers){
         return answers.filter(answer -> !answer.get(varName).equals(answer.get(refVarName)));
     }
 }

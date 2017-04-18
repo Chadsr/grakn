@@ -19,7 +19,8 @@
 package ai.grakn.test;
 
 import ai.grakn.GraknGraph;
-import ai.grakn.engine.postprocessing.EngineCache;
+import ai.grakn.GraknTxType;
+import ai.grakn.engine.cache.EngineCacheStandAlone;
 import ai.grakn.factory.EngineGraknGraphFactory;
 import org.junit.rules.TestRule;
 import org.junit.runner.Description;
@@ -70,7 +71,7 @@ public class GraphContext implements TestRule {
 
     public void rollback() {
         if (usingTinker()) {
-            graph.admin().clear(EngineCache.getInstance());
+            graph.admin().clear(EngineCacheStandAlone.getCache());
             loadGraph();
         } else if (!graph.isClosed()) {
             graph.close();
@@ -84,24 +85,25 @@ public class GraphContext implements TestRule {
     }
 
     private GraknGraph getEngineGraph(){
-        return EngineGraknGraphFactory.getInstance().getGraph(keyspace);
+        return EngineGraknGraphFactory.getInstance().getGraph(keyspace, GraknTxType.WRITE);
     }
 
     private void loadGraph() {
-        GraknGraph graph = getEngineGraph();
+        try(GraknGraph graph = getEngineGraph()) {
 
-        // if data should be pre-loaded, load
-        if (preLoad != null) {
-            preLoad.accept(graph);
-        }
-
-        if (files != null) {
-            for (String file : files) {
-                loadFromFile(graph, file);
+            // if data should be pre-loaded, load
+            if (preLoad != null) {
+                preLoad.accept(graph);
             }
-        }
 
-        graph.admin().commitNoLogs();
+            if (files != null) {
+                for (String file : files) {
+                    loadFromFile(graph, file);
+                }
+            }
+
+            graph.admin().commitNoLogs();
+        }
     }
 
     @Override

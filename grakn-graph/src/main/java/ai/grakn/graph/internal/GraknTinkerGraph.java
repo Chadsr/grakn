@@ -20,7 +20,10 @@ package ai.grakn.graph.internal;
 
 import ai.grakn.concept.Concept;
 import ai.grakn.util.ErrorMessage;
+import ai.grakn.util.Schema;
 import org.apache.tinkerpop.gremlin.tinkergraph.structure.TinkerGraph;
+
+import java.util.Properties;
 
 /**
  * <p>
@@ -36,8 +39,11 @@ import org.apache.tinkerpop.gremlin.tinkergraph.structure.TinkerGraph;
  * @author fppt
  */
 public class GraknTinkerGraph extends AbstractGraknGraph<TinkerGraph> {
-    public GraknTinkerGraph(TinkerGraph tinkerGraph, String name, String engineUrl, boolean batchLoading){
-        super(tinkerGraph, name, engineUrl, batchLoading);
+    private final TinkerGraph rootGraph;
+
+    public GraknTinkerGraph(TinkerGraph tinkerGraph, String name, String engineUrl, boolean batchLoading, Properties properties){
+        super(tinkerGraph, name, engineUrl, batchLoading, properties);
+        rootGraph = tinkerGraph;
     }
 
     /**
@@ -57,15 +63,26 @@ public class GraknTinkerGraph extends AbstractGraknGraph<TinkerGraph> {
     }
 
     @Override
+    public boolean isConnectionClosed() {
+        return !rootGraph.traversal().V().has(Schema.ConceptProperty.TYPE_LABEL.name(), Schema.MetaSchema.ENTITY.getLabel().getValue()).hasNext();
+    }
+
+    @Override
     public void commit(){
-        LOG.warn(ErrorMessage.TRANSACTIONS_NOT_SUPPORTED.getMessage(TinkerGraph.class.getName()));
+        LOG.warn(ErrorMessage.TRANSACTIONS_NOT_SUPPORTED.getMessage(TinkerGraph.class.getName(), "committed"));
         super.commit();
     }
 
     @Override
-    public <T extends Concept> T getConceptByBaseIdentifier(Object baseIdentifier) {
+    public void abort(){
+        LOG.warn(ErrorMessage.TRANSACTIONS_NOT_SUPPORTED.getMessage(TinkerGraph.class.getName(), "aborted"));
+        super.abort();
+    }
+
+    @Override
+    public <T extends Concept> T getConceptRawId(Object id) {
         try {
-            return super.getConceptByBaseIdentifier(Long.valueOf(baseIdentifier.toString()));
+            return super.getConceptRawId(Long.valueOf(id.toString()));
         } catch (NumberFormatException e){
             return null;
         }

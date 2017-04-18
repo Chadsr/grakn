@@ -72,7 +72,7 @@ public class VariableAndPatternTest {
 
     @Ignore //TODO: FIX THIS TEST
     @Test
-    public void testVarNameInvalid() {
+    public void whenCreatingAVarWithAnInvalidName_Throw() {
         assertExceptionThrown(Graql::var, "");
         assertExceptionThrown(Graql::var, " ");
         assertExceptionThrown(Graql::var, "!!!");
@@ -244,7 +244,7 @@ public class VariableAndPatternTest {
         assertTrue(graph.graql().match(var().isa("movie").has("title", "Godfather")).ask().execute());
         Set<Concept> result1 = graph.graql().match(
                 var("x").isa("movie").has("title", var("y")),
-                var("y").value(neq("Godfather"))).select("x").execute()
+                var("y").val(neq("Godfather"))).select("x").execute()
                 .stream()
                 .map(stringConceptMap -> stringConceptMap.get("x"))
                 .collect(Collectors.toSet());
@@ -260,18 +260,6 @@ public class VariableAndPatternTest {
 
         result2.removeAll(result1);
         assertEquals(1, result2.size());
-    }
-
-    @Ignore
-    @Test // TODO: Do we have a negation for this?
-    public void testNegationEmpty() {
-        Set<Concept> result = graph.graql().match(
-                var("x").isa("movie").has("title", var("y")),
-                var("y").value(neq(var()))).select("x").execute()
-                .stream()
-                .map(stringConceptMap -> stringConceptMap.get("x"))
-                .collect(Collectors.toSet());
-        assertTrue(result.isEmpty());
     }
 
     @Test(expected = Exception.class)

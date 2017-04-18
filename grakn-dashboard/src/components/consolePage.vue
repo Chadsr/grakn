@@ -123,9 +123,11 @@ export default {
             this.errorMessage = undefined;
             this.queryEngine(query);
         },
-        onLoadOntology() {
-            const querySub = `match $x sub ${API.ROOT_CONCEPT};`;
-            this.queryEngine(querySub);
+        onLoadOntology(type) {
+            const querySub = `match $x sub ${type};`;
+            EngineClient.graqlShell(querySub).then(this.shellResponse, (err) => {
+                this.state.eventHub.$emit('error-message', err.message);
+            });
         },
         queryEngine(query){
           EngineClient.graqlShell(query).then(this.shellResponse, (err) => {
@@ -146,7 +148,7 @@ export default {
             if (resp.length == 0) {
                 this.state.eventHub.$emit('warning-message', 'No results were found for your query.');
             } else {
-                this.graqlResponse = Prism.highlight(resp, PLang);
+                this.graqlResponse = Prism.highlight(JSON.parse(resp).response, PLang);
             }
         },
 

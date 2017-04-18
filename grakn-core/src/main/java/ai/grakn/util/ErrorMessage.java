@@ -29,7 +29,7 @@ package ai.grakn.util;
 public enum ErrorMessage {
     //--------------------------------------------- Core Errors -----------------------------------------------
     CANNOT_DELETE("Type [%s] cannot be deleted as it still has incoming edges"),
-    LOOP_DETECTED("Concept [%s] loops when following edges of type [%s]"),
+    SUPER_TYPE_LOOP_DETECTED("By setting the super type of concept [%s] to [%s]. You will be creating a loop. This is prohibited"),
     ID_NOT_UNIQUE("Failed to change the Id of Concept [%s] due to another concept already having an id of " +
             "type [%s] with value [%s]"),
     ID_ALREADY_TAKEN("The id [%s] is already taken by concept [%s]"),
@@ -43,39 +43,42 @@ public enum ErrorMessage {
     REGEX_NOT_STRING("The Resource Type [%s] is not of type String so it cannot support regular expressions"),
     ROLE_IS_NULL("The provided role cannot be null with roleplayer [%s]"),
     CLOSED_CLEAR("This graph has been closed due to clearing it"),
-    TRANSACTIONS_NOT_SUPPORTED("The graph backend [%s] does not actually support transactions. The graph was not committed or refreshed."),
+    TRANSACTIONS_NOT_SUPPORTED("The graph backend [%s] does not actually support transactions. The transaction was not %s. The graph was actually effected directly"),
     IMMUTABLE_VALUE("The value [%s] of concept [%s] cannot be changed to [%s] due to the property [%s] being immutable"),
     NULL_VALUE("The value of [%s] cannot be set to [null]"),
     META_TYPE_IMMUTABLE("The meta type [%s] is immutable"),
-    RESOURCE_TYPE_UNIQUE("The resource [%s] is unique and is already attached to [%s]."),
     SCHEMA_LOCKED("Schema cannot be modified when using a batch loading graph"),
-    HAS_RESOURCE_INVALID("The type [%s] is not allowed to have a resource of type [%s]"),
+    HAS_INVALID("The type [%s] is not allowed to have a %s of type [%s]"),
     INVALID_SYSTEM_KEYSPACE("The system keyspace appears to be corrupted: [%s]."),
     ROLE_TYPE_ERROR("The role type [%s] cannot play itself"),
     BACKEND_EXCEPTION("Unknown Backend Exception."),
     GRAPH_CLOSED("The Graph for keyspace [%s] is closed"),
-    GRAPH_PERMANENTLY_CLOSED("The Graph for keyspace [%s] is closed. Use the factory to get a new graph."),
-    TRANSACTIONS_OPEN("Cannot close graph [%s] connecting to keyspace [%s] because there are [%s] open transactions"),
+    GRAPH_CLOSED_ON_ACTION("The transaction was %s and closed graph [%s]. Use the session to get a new transaction for the graph."),
+    TRANSACTIONS_OPEN("Closed session on graph [%s] with [%s] open transactions"),
     LOCKING_EXCEPTION("Internal locking exception. Please clear the transaction and try again."),
+    CANNOT_BE_KEY_AND_RESOURCE("The Type [%s] cannot have the Resource Type [%s] as a key and as a resource"),
+    TRANSACTION_ALREADY_OPEN("A transaction is already open on this thread for graph [%s]"),
+    TRANSACTION_READ_ONLY("This transaction on graph [%s] is read only"),
+    CONCEPT_HAS_NO_SHARD("Concept [%s] does not have any shard"),
 
     //--------------------------------------------- Validation Errors
     VALIDATION("A structural validation error has occurred. Please correct the [`%s`] errors found. \n"),
     VALIDATION_RELATION_MORE_CASTING_THAN_ROLES("The relation [%s] has [%s] role players but its type [%s] " +
             "only allows [%s] roles \n"),
     VALIDATION_RELATION_CASTING_LOOP_FAIL("The relation [%s] has a role player playing the role [%s] " +
-            "which it's type [%s] is not connecting to via a has-role connection \n"),
+            "which it's type [%s] is not connecting to via a relates connection \n"),
 
     VALIDATION_CASTING("The type [%s] of role player [%s] is not allowed to play RoleType [%s] \n"),
     VALIDATION_IS_ABSTRACT("The abstract Type [%s] should not have any instances \n"),
-    VALIDATION_ROLE_TYPE_MISSING_RELATION_TYPE("RoleType [%s] does not have a has-role connection to any Relation Type. \n"),
-    VALIDATION_RELATION_TYPE("Relation Type [%s] does not have two or more roles \n"),
+    VALIDATION_ROLE_TYPE_MISSING_RELATION_TYPE("RoleType [%s] does not have a relates connection to any Relation Type. \n"),
+    VALIDATION_RELATION_TYPE("Relation Type [%s] does not have one or more roles \n"),
     VALIDATION_INSTANCE("Instance [%s] of type [%s] does not play the required role [%s] \n"),
 
     VALIDATION_RELATION_TYPES_ROLES_SCHEMA("The Role Type [%s] which is connected to Relation Type [%s] " +
             "does not have a %s Role Type which is connected to the %s Relation Type [%s] \n"),
 
     VALIDATION_RELATION_DUPLICATE("You have created one or more relations with the following roles and role player [%s] \n"),
-    VALIDATION_REQUIRED_RELATION("The role player [%s] can only play the role of [%s] once but is currently doing so [%s] times \n"),
+    VALIDATION_REQUIRED_RELATION("The role player [%s] of type [%s] can only play the role of [%s] once but is currently doing so [%s] times \n"),
 
     VALIDATION_RULE_MISSING_ELEMENTS("The [%s] of rule [%s] of type [%s] refers to type [%s] which does not exist in the graph \n"),
 
@@ -100,23 +103,25 @@ public enum ErrorMessage {
     SYNTAX_ERROR("syntax error at line %s: \n%s\n%s\n%s"),
 
     MUST_BE_RESOURCE_TYPE("type '%s' must be a resource-type"),
-    NAME_NOT_FOUND("name '%s' not found"),
+    LABEL_NOT_FOUND("label '%s' not found"),
     NOT_A_ROLE_TYPE("'%s' is not a role type. perhaps you meant 'isa %s'?"),
     NOT_A_RELATION_TYPE("'%s' is not a relation type. perhaps you forgot to separate your statements with a ';'?"),
     NOT_ROLE_IN_RELATION("'%s' is not a valid role type for relation type '%s'. valid role types are: '%s'"),
     SET_GENERATED_VARIABLE_NAME("cannot set variable name '%s' on a variable without a user-defined name"),
     INSTANCE_OF_ROLE_TYPE("cannot get instances of role type %s"),
     CONFLICTING_PROPERTIES("the following unique properties in '%s' conflict: '%s' and '%s'"),
+    NON_POSITIVE_LIMIT("limit %s should be positive"),
+    NEGATIVE_OFFSET("offset %s should be non-negative"),
 
     AGGREGATE_ARGUMENT_NUM("aggregate '%s' takes %s arguments, but got %s"),
     UNKNOWN_AGGREGATE("unknown aggregate '%s'"),
 
+    VARIABLE_NAME_INVALID("the variable name '%s' is not valid. A variable name should comprise upper and lower alphanumeric characters, underscore and dash."),
     VARIABLE_NOT_IN_QUERY("the variable %s is not in the query"),
     SELECT_NONE_SELECTED("no variables have been selected. at least one variable must be selected"),
-    MATCH_NO_PATTERNS("no patterns have been provided in match query. at least one pattern must be provided"),
+    NO_PATTERNS("no patterns have been provided. at least one pattern must be provided"),
     MATCH_INVALID("cannot match on property of type [%s]"),
-    SELECT_VAR_NOT_IN_MATCH("%s does not appear in match query"),
-    NO_NAME_SPECIFIED_FOR_HAS_RESOURCE("no name was specified for a resource type in a 'has-resource' property"),
+    NO_LABEL_SPECIFIED_FOR_HAS("no label was specified for a resource type in a 'has' property"),
     MULTIPLE_GRAPH("a graph has been specified twice for this query"),
     MULTIPLE_ORDER("an ordering has been specified twice for this query"),
 
@@ -134,7 +139,7 @@ public enum ErrorMessage {
     INSERT_NO_RESOURCE_RELATION("type %s cannot have resource type %s"),
     INSERT_METATYPE("'%s' cannot be a subtype of '%s'"),
     INSERT_RECURSIVE("%s should not refer to itself"),
-    INSERT_TYPE_WITHOUT_NAME("attempted to insert a type without a name"),
+    INSERT_TYPE_WITHOUT_LABEL("attempted to insert a type without a label"),
     INSERT_RELATION_WITHOUT_ROLE_TYPE("attempted to insert a relation without all role types specified"),
     INSERT_RESOURCE_WITHOUT_VALUE("cannot insert a resource without specifying a value"),
     INSERT_INSTANCE_WITH_NAME("cannot insert an instance with a name: %s"),
@@ -159,6 +164,13 @@ public enum ErrorMessage {
     NO_PARAMETER_PROVIDED("Required Parameter [%s] is missing for this [%s] operation"),
     NO_CONCEPT_IN_KEYSPACE("No concept with ID [%s] exists in keyspace [%s]"),
 
+    //Server Errors
+    UNAVAILABLE_TASK_CLASS("Could not find task class [%s]"),
+    MISSING_MANDATORY_PARAMETERS("Missing mandatory parameter [%s]"),
+    UNSUPPORTED_CONTENT_TYPE("Unsupported Content-Type [%s] requested"),
+    INVALID_CONTENT_TYPE("Invalid combination of query [%s] and content type [%s]"),
+    EXPLAIN_ONLY_MATCH("Cannot get explanation for non-match query, given: [%s]"),
+
     //Post processing Errors
     CONCEPT_POSTPROCESSING("Concept [%s] of type [%s] does not have any post-processing steps"),
     POSTPROCESSING_ERROR("Unexpected error during post processing on Job [%s] fix due to [%s]"),
@@ -173,6 +185,7 @@ public enum ErrorMessage {
     //--------------------------------------------- Reasoner Errors -----------------------------------------------
     GRAPH_MISSING("Provided query does not have an associated graph"),
     NON_HORN_RULE("The specified rule [%s] is not a Horn rule"),
+    HEAD_ROLES_MISSING("The specified rule [%s] is ambiguous - it does not specify all role types in the head."),
     PARENT_MISSING("Attempted operation on atom %s that does not have a parent"),
     PATTERN_NOT_VAR("The pattern [%s] is not a var"),
     MULTIPLE_RESOURCES("Multiple resource types found during data extraction in atom [%s]"),
