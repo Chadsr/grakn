@@ -343,6 +343,12 @@ public class Utility {
                                              GraknGraph graph){
         final int parentArity = parent.hasRoles().size();
         final int childArity = child.hasRoles().size();
+
+        System.out.println();
+        System.out.println("Parent: "+parent+" : "+parentArity);
+        System.out.println("Child: "+child+" : "+childArity);
+        System.out.println(roleMappings.size()+"\n\n");
+
         if (parentArity != childArity || parentArity != roleMappings.size()) {
             throw new IllegalArgumentException(ErrorMessage.RULE_CREATION_ARITY_ERROR.getMessage());
         }
@@ -383,7 +389,7 @@ public class Utility {
         Var headVar = var().isa(name(relation.getName())).rel(name(fromRoleName), "x").rel(name(toRoleName), var(varNames.peek()));
         return graph.admin().getMetaRuleInference().addRule(Patterns.conjunction(bodyVars), headVar);
     }
-    
+
     /**
      * @param role in question
      * @return top non-meta super role of the role
